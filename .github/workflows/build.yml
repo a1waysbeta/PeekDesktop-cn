@@ -92,7 +92,7 @@ jobs:
         azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
         endpoint: https://wus2.codesigning.azure.net/
         signing-account-name: hanselman
-        certificate-profile-name: PeekDesktop
+        certificate-profile-name: WindowsEdgeLight
         files-folder: ${{ github.workspace }}\src\PeekDesktop\bin\Release\net8.0-windows
         files-folder-filter: exe
         files-folder-recurse: true
