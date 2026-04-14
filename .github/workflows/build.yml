@@ -120,9 +120,9 @@ jobs:
         endpoint: ${{ env.TRUSTED_SIGNING_ENDPOINT }}
         signing-account-name: ${{ env.TRUSTED_SIGNING_ACCOUNT }}
         certificate-profile-name: ${{ env.TRUSTED_SIGNING_PROFILE }}
-        files-folder: ${{ github.workspace }}\src\PeekDesktop\bin\Release\net10.0-windows
-        files-folder-filter: "*.exe,*.dll"
-        files-folder-recurse: true
+        files: |
+          ${{ github.workspace }}\src\PeekDesktop\bin\Release\net10.0-windows\win-x64\publish\PeekDesktop.exe
+          ${{ github.workspace }}\src\PeekDesktop\bin\Release\net10.0-windows\win-arm64\publish\PeekDesktop.exe
         file-digest: SHA256
         timestamp-rfc3161: http://timestamp.acs.microsoft.com
         timestamp-digest: SHA256
