@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
+using Accessibility;
 
 namespace PeekDesktop;
 
@@ -34,6 +35,9 @@ internal static class NativeMethods
 
     // --- DWM constants ---
     public const int DWMWA_CLOAKED = 14;
+
+    // --- MSAA accessible roles ---
+    public const int ROLE_SYSTEM_LISTITEM = 0x22;
 
     #region Delegates
 
@@ -201,6 +205,12 @@ internal static class NativeMethods
     private static extern int DwmGetWindowAttribute(
         IntPtr hwnd, int dwAttribute, out int pvAttribute, int cbAttribute);
 
+    [DllImport("oleacc.dll")]
+    private static extern int AccessibleObjectFromPoint(
+        POINT pt,
+        [Out, MarshalAs(UnmanagedType.Interface)] out IAccessible? accessibleObject,
+        [Out, MarshalAs(UnmanagedType.Struct)] out object? child);
+
     #endregion
 
     #region Helpers
@@ -231,6 +241,41 @@ internal static class NativeMethods
         string className = GetWindowClassName(hwnd);
         string title = GetWindowTitle(hwnd);
         return $"hwnd=0x{hwnd.ToInt64():X} class={className} title=\"{title}\"";
+    }
+
+    public static bool TryGetAccessibleDetailsAtPoint(POINT point, out int role, out string name)
+    {
+        role = 0;
+        name = string.Empty;
+
+        int hr = AccessibleObjectFromPoint(point, out IAccessible? accessibleObject, out object? child);
+        if (hr < 0 || accessibleObject == null)
+            return false;
+
+        object childReference = child ?? 0;
+
+        try
+        {
+            object? roleValue = accessibleObject.get_accRole(childReference);
+            if (roleValue != null)
+                role = Convert.ToInt32(roleValue);
+        }
+        catch (COMException ex)
+        {
+            AppDiagnostics.Log($"Accessible role lookup failed: 0x{ex.HResult:X}");
+            return false;
+        }
+
+        try
+        {
+            name = accessibleObject.get_accName(childReference) ?? string.Empty;
+        }
+        catch (COMException ex)
+        {
+            AppDiagnostics.Log($"Accessible name lookup failed: 0x{ex.HResult:X}");
+        }
+
+        return true;
     }
 
     /// <summary>

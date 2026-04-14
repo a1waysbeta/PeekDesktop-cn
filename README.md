@@ -1,28 +1,28 @@
 # PeekDesktop 👀
 
-**Click your desktop to peek at it — just like macOS Sonoma.**
+**Click empty desktop wallpaper to peek at it — just like macOS Sonoma.**
 
-PeekDesktop brings macOS Sonoma's "click wallpaper to reveal desktop" feature to Windows 10 and 11. Click empty space on your desktop and all windows minimize. Click any window or the taskbar, and everything comes right back where it was.
+PeekDesktop brings macOS Sonoma's "click wallpaper to reveal desktop" feature to Windows 10 and 11. Click empty wallpaper and all windows minimize. Click or drag desktop icons normally without accidentally triggering peek. When you're done, click any window, the taskbar, or the wallpaper again and everything comes right back where it was.
 
 <!-- ![PeekDesktop Demo](docs/demo.gif) -->
 <!-- TODO: Record demo GIF -->
 
 ## Download
 
-📥 **[Download latest release](https://github.com/shanselman/PeekDesktop/releases/latest)**
+📥 **[Download the latest release](https://github.com/shanselman/PeekDesktop/releases/latest)**
 
 | File | Platform |
 |------|----------|
-| `PeekDesktop-x64.exe` | Intel/AMD (most PCs) |
-| `PeekDesktop-arm64.exe` | ARM64 (Surface Pro X, Snapdragon, etc.) |
+| `PeekDesktop-v0.1-win-x64.zip` | Intel/AMD (most PCs) |
+| `PeekDesktop-v0.1-win-arm64.zip` | ARM64 (Surface Pro X, Snapdragon, etc.) |
 
-No installation needed. Just run the exe. It lives in your system tray.
+No installer needed. Download the zip, extract it, and run `PeekDesktop.exe`. It lives in your system tray.
 
 ## How It Works
 
-1. **Click your desktop wallpaper** (empty space, not on an icon) → all windows minimize
-2. **Interact with your desktop** — right-click, open context menus — windows stay hidden
-3. **Click any window or the taskbar** → all windows restore to exactly where they were
+1. **Click empty desktop wallpaper** (not an icon) -> all windows minimize
+2. **Stay on the desktop** -> click or drag icons, right-click, and rearrange things while windows stay hidden
+3. **Click any app, the taskbar, or empty wallpaper again** -> all windows restore to exactly where they were
 
 That's it. It just works.
 
@@ -32,6 +32,7 @@ PeekDesktop uses lightweight Windows APIs:
 
 - **`SetWindowsHookEx(WH_MOUSE_LL)`** — low-level mouse hook to detect desktop clicks
 - **`WindowFromPoint`** — identifies the window under your cursor
+- **MSAA hit-testing (`AccessibleObjectFromPoint`)** — distinguishes empty wallpaper from desktop icons
 - **`EnumWindows` + `WINDOWPLACEMENT`** — captures exact position and state (including maximized) of every window
 - **`SetWinEventHook(EVENT_SYSTEM_FOREGROUND)`** — watches for when you switch back to an app
 - **`SetWindowPlacement`** — restores windows to their exact previous positions
@@ -53,6 +54,8 @@ Right-click the tray icon for options:
 |---------|-------------|-------------|
 | Click wallpaper to peek | ✅ | ✅ |
 | Restore on app click | ✅ | ✅ |
+| Restore on second wallpaper click | ✅ | ✅ |
+| Clicking/dragging icons does not trigger peek | ✅ | ✅ |
 | Desktop icons accessible | ✅ | ✅ |
 | Exact window position restore | ✅ | ✅ |
 | System tray control | ❌ | ✅ |
@@ -104,18 +107,24 @@ src/PeekDesktop/
 ### State Machine
 
 ```
-┌──────┐  desktop click   ┌─────────┐
+┌──────┐  empty wallpaper click   ┌─────────┐
 │ Idle │ ───────────────→ │ Peeking │
 │      │ ←─────────────── │         │
-└──────┘  focus changes    └─────────┘
-          to non-desktop
-          window
+└──────┘  app click / taskbar      └─────────┘
+          click / wallpaper click
+          to restore
 ```
 
 ## Contributing
 
-PRs welcome! This is a v1 prototype — there's plenty to improve:
+PRs welcome! Current status and next ideas:
 
+- [x] Click empty wallpaper to peek
+- [x] Restore on app click or taskbar click
+- [x] Restore on a second wallpaper click
+- [x] Clicking or dragging desktop icons does **not** start peek
+- [x] Desktop icons remain usable while peeking
+- [x] Exact window positions are restored
 - [ ] Smooth minimize/restore animations (slide/fade)
 - [ ] Hotkey support (e.g., `Ctrl+F12` to toggle peek)
 - [ ] Per-monitor peek (only minimize windows on the clicked monitor)

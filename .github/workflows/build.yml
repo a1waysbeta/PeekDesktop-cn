@@ -27,21 +27,26 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore src/PeekDesktop/PeekDesktop.csproj
 
-    - name: Install GitVersion
-      uses: gittools/actions/gitversion/setup@v4
-      with:
-        versionSpec: '6.4.x'
-
-    - name: GitVersion
-      uses: gittools/actions/gitversion/execute@v4
-      id: gitversion
-
     - name: Set version environment variables
       shell: pwsh
       run: |
-        $version = '${{ steps.gitversion.outputs.semVer }}'
-        $fullVersion = '${{ steps.gitversion.outputs.fullSemVer }}'
-        $assemblyVersion = "${{ steps.gitversion.outputs.major }}.${{ steps.gitversion.outputs.minor }}.${{ steps.gitversion.outputs.patch }}.0"
+        if ('${{ github.ref_type }}' -eq 'tag') {
+          $version = '${{ github.ref_name }}'.TrimStart('v')
+        } else {
+          $version = "0.1.0-ci.${{ github.run_number }}"
+        }
+
+        $numericVersion = ($version -split '-', 2)[0]
+        $parts = $numericVersion.Split('.')
+        if ($parts.Length -lt 2) {
+          throw "Version '$version' is not in a supported format."
+        }
+
+        $major = [int]$parts[0]
+        $minor = [int]$parts[1]
+        $patch = if ($parts.Length -ge 3) { [int]$parts[2] } else { 0 }
+        $fullVersion = $version
+        $assemblyVersion = "$major.$minor.$patch.0"
 
         Write-Host "Using semantic version: $version"
         Write-Host "Using full version: $fullVersion"
@@ -134,7 +139,7 @@ jobs:
         body: |
           ## PeekDesktop ${{ github.ref_name }}
 
-          **Click your desktop to peek at it — just like macOS Sonoma.**
+          **Click empty desktop wallpaper to peek at it — just like macOS Sonoma.**
 
           ### 📦 Downloads
 
@@ -146,9 +151,9 @@ jobs:
           **Self-contained** - Extract and run, no .NET installation required.
 
           ### 👀 How It Works
-          - Click your desktop wallpaper → all windows minimize
-          - Interact with your desktop freely
-          - Click any window or the taskbar → everything restores
+          - Click empty wallpaper -> all windows minimize
+          - Click or drag desktop icons without triggering peek
+          - Click any window, the taskbar, or the wallpaper again -> everything restores
 
           ---
         append_body: true

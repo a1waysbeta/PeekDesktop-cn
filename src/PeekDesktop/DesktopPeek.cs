@@ -6,7 +6,7 @@ namespace PeekDesktop;
 /// Core orchestrator for the peek-desktop feature.
 /// State machine with two states: Idle and Peeking.
 ///
-///   Idle → Peeking:  user clicks the desktop surface
+///   Idle → Peeking:  user clicks empty desktop wallpaper
 ///   Peeking → Idle:  a non-desktop window gains foreground focus
 /// </summary>
 public sealed class DesktopPeek : IDisposable
@@ -28,6 +28,7 @@ public sealed class DesktopPeek : IDisposable
     {
         AppDiagnostics.Log("DesktopPeek created");
         _mouseHook.DesktopClicked += OnDesktopClicked;
+        _mouseHook.DesktopIconClicked += OnDesktopIconClicked;
         _mouseHook.NonDesktopClicked += OnNonDesktopClicked;
         _focusWatcher.FocusChanged += OnFocusChanged;
     }
@@ -66,6 +67,23 @@ public sealed class DesktopPeek : IDisposable
 
         AppDiagnostics.Log("Desktop click accepted; entering peek mode");
         PeekDesktopNow();
+    }
+
+    private void OnDesktopIconClicked(object? sender, EventArgs e)
+    {
+        if (_isTransitioning)
+        {
+            AppDiagnostics.Log("Desktop icon click ignored during transition");
+            return;
+        }
+
+        if (_isPeeking)
+        {
+            AppDiagnostics.Log("Desktop icon clicked while peeking; staying in peek mode");
+            return;
+        }
+
+        AppDiagnostics.Log("Desktop icon clicked; not entering peek mode");
     }
 
     private void OnNonDesktopClicked(object? sender, EventArgs e)

@@ -19,9 +19,14 @@ public sealed class MouseHook : IDisposable
     private SynchronizationContext? _syncContext;
 
     /// <summary>
-    /// Raised (on the UI thread) when a left-click on the desktop is detected.
+    /// Raised (on the UI thread) when a left-click on empty desktop wallpaper is detected.
     /// </summary>
     public event EventHandler? DesktopClicked;
+
+    /// <summary>
+    /// Raised (on the UI thread) when a left-click lands on a desktop icon.
+    /// </summary>
+    public event EventHandler? DesktopIconClicked;
 
     /// <summary>
     /// Raised (on the UI thread) when a left-click lands on something other than the desktop.
@@ -65,15 +70,23 @@ public sealed class MouseHook : IDisposable
             var hookStruct = Marshal.PtrToStructure<NativeMethods.MSLLHOOKSTRUCT>(lParam);
             IntPtr windowUnderCursor = NativeMethods.WindowFromPoint(hookStruct.pt);
             AppDiagnostics.LogWindow("Mouse click target", windowUnderCursor);
+            DesktopClickTarget clickTarget = DesktopDetector.GetClickTarget(windowUnderCursor, hookStruct.pt);
+            AppDiagnostics.Log($"Mouse click classification: {clickTarget}");
 
-            if (DesktopDetector.IsDesktopRelatedWindow(windowUnderCursor))
+            switch (clickTarget)
             {
-                // Post to message loop — don't block the hook callback
-                _syncContext?.Post(_ => DesktopClicked?.Invoke(this, EventArgs.Empty), null);
-            }
-            else
-            {
-                _syncContext?.Post(_ => NonDesktopClicked?.Invoke(this, EventArgs.Empty), null);
+                case DesktopClickTarget.DesktopBackground:
+                    // Post to message loop — don't block the hook callback
+                    _syncContext?.Post(_ => DesktopClicked?.Invoke(this, EventArgs.Empty), null);
+                    break;
+
+                case DesktopClickTarget.DesktopIcon:
+                    _syncContext?.Post(_ => DesktopIconClicked?.Invoke(this, EventArgs.Empty), null);
+                    break;
+
+                default:
+                    _syncContext?.Post(_ => NonDesktopClicked?.Invoke(this, EventArgs.Empty), null);
+                    break;
             }
         }
 
