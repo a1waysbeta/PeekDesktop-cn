@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace PeekDesktop;
@@ -64,16 +65,13 @@ public sealed class PeekDesktopContext : ApplicationContext
         if (settings.Enabled)
             _desktopPeek.Start();
 
-        var updateTimer = new System.Windows.Forms.Timer { Interval = 2000 };
-        updateTimer.Tick += async (_, _) =>
+        _ = Task.Run(async () =>
         {
-            updateTimer.Stop();
-            updateTimer.Dispose();
+            await Task.Delay(2000);
 
             if (_appUpdater is not null)
                 await _appUpdater.CheckForUpdatesAsync(interactive: false);
-        };
-        updateTimer.Start();
+        });
     }
 
     protected override void Dispose(bool disposing)

@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Reflection;
 using System.Windows.Forms;
 
 namespace PeekDesktop;
@@ -36,6 +37,14 @@ internal sealed class TrayIcon : IDisposable
             Visible = true,
             ContextMenuStrip = CreateContextMenu()
         };
+
+        _notifyIcon.BalloonTipClicked += (_, _) => _appUpdater.OpenLatestReleasePage();
+        _appUpdater.UpdateAvailable += (_, e) =>
+        {
+            _notifyIcon.BalloonTipTitle = "PeekDesktop Update Available";
+            _notifyIcon.BalloonTipText = $"Version {e.Version} is available. Click here to open the download page.";
+            _notifyIcon.ShowBalloonTip(5000);
+        };
     }
 
     private ContextMenuStrip CreateContextMenu()
@@ -70,7 +79,7 @@ internal sealed class TrayIcon : IDisposable
         var aboutItem = new ToolStripMenuItem("About PeekDesktop");
         aboutItem.Click += (_, _) =>
         {
-            string version = Application.ProductVersion.Split('+')[0];
+            string version = GetDisplayVersion();
             MessageBox.Show(
                 $"PeekDesktop v{version}\n\n" +
                 "Click your desktop wallpaper to peek at your desktop,\n" +
@@ -136,6 +145,19 @@ internal sealed class TrayIcon : IDisposable
 
         IntPtr hIcon = bitmap.GetHicon();
         return Icon.FromHandle(hIcon);
+    }
+
+    private static string GetDisplayVersion()
+    {
+        Assembly assembly = typeof(Program).Assembly;
+        string? version = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+            ?? assembly.GetName().Version?.ToString();
+
+        if (string.IsNullOrWhiteSpace(version))
+            return "unknown";
+
+        int plusIndex = version.IndexOf('+');
+        return plusIndex >= 0 ? version[..plusIndex] : version;
     }
 
     public void Dispose()

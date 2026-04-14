@@ -17,7 +17,7 @@ PeekDesktop brings macOS Sonoma's "click wallpaper to reveal desktop" feature to
 | `PeekDesktop-vX.Y-win-x64.zip` | Intel/AMD (most PCs) |
 | `PeekDesktop-vX.Y-win-arm64.zip` | ARM64 (Surface Pro X, Snapdragon, etc.) |
 
-No installer needed. Download the zip, extract it, and run `PeekDesktop.exe`. It lives in your system tray and can check GitHub Releases for updates.
+No installer needed. Download the zip, extract it, and run `PeekDesktop.exe`. It lives in your system tray and can notify you when a newer GitHub Release is available.
 
 ## How It Works
 
@@ -47,7 +47,7 @@ Right-click the tray icon for options:
 - ✅ **Enabled** — toggle the peek feature on/off
 - 🔁 **Start with Windows** — launch automatically at login
 - ℹ️ **About** — version info
-- ⬇️ **Check for Updates** — pull the latest GitHub Release from the tray
+- ⬇️ **Check for Updates** — see if a newer version is out and open the download page
 - ❌ **Exit** — quit PeekDesktop
 
 ## macOS Sonoma vs PeekDesktop

@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using Accessibility;
@@ -32,12 +33,30 @@ internal static class NativeMethods
     // --- WinEvent constants ---
     public const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
     public const uint WINEVENT_OUTOFCONTEXT = 0x0000;
+    public const uint SMTO_ABORTIFHUNG = 0x0002;
 
     // --- DWM constants ---
     public const int DWMWA_CLOAKED = 14;
 
     // --- MSAA accessible roles ---
     public const int ROLE_SYSTEM_LISTITEM = 0x22;
+
+    // --- ListView hit testing ---
+    private const int LVM_FIRST = 0x1000;
+    private const int LVM_HITTEST = LVM_FIRST + 18;
+    private const uint LVHT_ONITEMICON = 0x0002;
+    private const uint LVHT_ONITEMLABEL = 0x0004;
+    private const uint LVHT_ONITEMSTATEICON = 0x0008;
+    private const uint LVHT_ONITEM = LVHT_ONITEMICON | LVHT_ONITEMLABEL | LVHT_ONITEMSTATEICON;
+
+    // --- Remote memory helpers ---
+    private const uint PROCESS_VM_OPERATION = 0x0008;
+    private const uint PROCESS_VM_READ = 0x0010;
+    private const uint PROCESS_VM_WRITE = 0x0020;
+    private const uint MEM_COMMIT = 0x1000;
+    private const uint MEM_RESERVE = 0x2000;
+    private const uint MEM_RELEASE = 0x8000;
+    private const uint PAGE_READWRITE = 0x04;
 
     #region Delegates
 
@@ -85,6 +104,16 @@ internal static class NativeMethods
         public POINT ptMinPosition;
         public POINT ptMaxPosition;
         public RECT rcNormalPosition;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LVHITTESTINFO
+    {
+        public POINT pt;
+        public uint flags;
+        public int iItem;
+        public int iSubItem;
+        public int iGroup;
     }
 
     #endregion
@@ -148,6 +177,13 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool ScreenToClient(IntPtr hWnd, ref POINT lpPoint);
+
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
     #endregion
 
     #region Window manipulation
@@ -205,6 +241,11 @@ internal static class NativeMethods
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     public static extern IntPtr GetModuleHandle(string? lpModuleName);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SendMessageTimeout(
+        IntPtr hWnd, int Msg, IntPtr wParam, IntPtr lParam,
+        uint fuFlags, uint uTimeout, out IntPtr lpdwResult);
+
     [DllImport("dwmapi.dll")]
     private static extern int DwmGetWindowAttribute(
         IntPtr hwnd, int dwAttribute, out int pvAttribute, int cbAttribute);
@@ -214,6 +255,28 @@ internal static class NativeMethods
         POINT pt,
         [Out, MarshalAs(UnmanagedType.Interface)] out IAccessible? accessibleObject,
         [Out, MarshalAs(UnmanagedType.Struct)] out object? child);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint dwDesiredAccess, [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle, uint dwProcessId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(IntPtr hObject);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr VirtualAllocEx(IntPtr hProcess, IntPtr lpAddress, nuint dwSize, uint flAllocationType, uint flProtect);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool VirtualFreeEx(IntPtr hProcess, IntPtr lpAddress, nuint dwSize, uint dwFreeType);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool WriteProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, byte[] lpBuffer, int nSize, out IntPtr lpNumberOfBytesWritten);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, [Out] byte[] lpBuffer, int nSize, out IntPtr lpNumberOfBytesRead);
 
     #endregion
 
@@ -252,7 +315,26 @@ internal static class NativeMethods
         role = 0;
         name = string.Empty;
 
-        int hr = AccessibleObjectFromPoint(point, out IAccessible? accessibleObject, out object? child);
+        if (!RuntimeFeature.IsDynamicCodeSupported)
+        {
+            AppDiagnostics.Log("Accessible hit-testing is unavailable in Native AOT; skipping desktop icon COM probe.");
+            return false;
+        }
+
+        int hr;
+        IAccessible? accessibleObject;
+        object? child;
+
+        try
+        {
+            hr = AccessibleObjectFromPoint(point, out accessibleObject, out child);
+        }
+        catch (NotSupportedException ex)
+        {
+            AppDiagnostics.Log($"AccessibleObjectFromPoint is unsupported in this runtime: {ex.Message}");
+            return false;
+        }
+
         if (hr < 0 || accessibleObject == null)
             return false;
 
@@ -282,6 +364,29 @@ internal static class NativeMethods
         return true;
     }
 
+    public static bool TryIsDesktopListViewItemAtPoint(IntPtr hwnd, POINT screenPoint, out bool isOnItem)
+    {
+        isOnItem = false;
+
+        IntPtr listView = FindAncestorByClassName(hwnd, "SysListView32");
+        if (listView == IntPtr.Zero)
+            return false;
+
+        POINT clientPoint = screenPoint;
+        if (!ScreenToClient(listView, ref clientPoint))
+            return false;
+
+        var hitTest = new LVHITTESTINFO
+        {
+            pt = clientPoint,
+            iItem = -1,
+            iSubItem = -1,
+            iGroup = -1
+        };
+
+        return TryListViewHitTest(listView, ref hitTest, out isOnItem);
+    }
+
     /// <summary>
     /// Returns true if the window is cloaked (hidden by DWM, e.g. on another virtual desktop).
     /// </summary>
@@ -289,6 +394,75 @@ internal static class NativeMethods
     {
         int hr = DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, out int cloaked, sizeof(int));
         return hr == 0 && cloaked != 0;
+    }
+
+    private static IntPtr FindAncestorByClassName(IntPtr hwnd, string className)
+    {
+        IntPtr current = hwnd;
+        while (current != IntPtr.Zero)
+        {
+            if (string.Equals(GetWindowClassName(current), className, StringComparison.OrdinalIgnoreCase))
+                return current;
+
+            current = GetParent(current);
+        }
+
+        return IntPtr.Zero;
+    }
+
+    private static bool TryListViewHitTest(IntPtr listView, ref LVHITTESTINFO hitTest, out bool isOnItem)
+    {
+        isOnItem = false;
+
+        _ = GetWindowThreadProcessId(listView, out uint processId);
+        if (processId == 0)
+            return false;
+
+        IntPtr processHandle = OpenProcess(PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE, false, processId);
+        if (processHandle == IntPtr.Zero)
+            return false;
+
+        int size = Marshal.SizeOf<LVHITTESTINFO>();
+        IntPtr remoteBuffer = IntPtr.Zero;
+        IntPtr localBuffer = IntPtr.Zero;
+
+        try
+        {
+            remoteBuffer = VirtualAllocEx(processHandle, IntPtr.Zero, (nuint)size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+            if (remoteBuffer == IntPtr.Zero)
+                return false;
+
+            localBuffer = Marshal.AllocHGlobal(size);
+            Marshal.StructureToPtr(hitTest, localBuffer, false);
+
+            var bytes = new byte[size];
+            Marshal.Copy(localBuffer, bytes, 0, size);
+
+            if (!WriteProcessMemory(processHandle, remoteBuffer, bytes, bytes.Length, out _))
+                return false;
+
+            if (SendMessageTimeout(listView, LVM_HITTEST, IntPtr.Zero, remoteBuffer, SMTO_ABORTIFHUNG, 100, out IntPtr messageResult) == IntPtr.Zero)
+                return false;
+
+            if (!ReadProcessMemory(processHandle, remoteBuffer, bytes, bytes.Length, out _))
+                return false;
+
+            Marshal.Copy(bytes, 0, localBuffer, size);
+            hitTest = Marshal.PtrToStructure<LVHITTESTINFO>(localBuffer);
+
+            isOnItem = messageResult.ToInt64() >= 0 || (hitTest.flags & LVHT_ONITEM) != 0;
+            return true;
+        }
+        finally
+        {
+            if (localBuffer != IntPtr.Zero)
+                Marshal.FreeHGlobal(localBuffer);
+
+            if (remoteBuffer != IntPtr.Zero)
+                VirtualFreeEx(processHandle, remoteBuffer, 0, MEM_RELEASE);
+
+            CloseHandle(processHandle);
+        }
     }
 
     #endregion

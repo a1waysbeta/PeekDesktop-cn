@@ -18,8 +18,4 @@
     <_SuppressWinFormsTrimError>true</_SuppressWinFormsTrimError>
   </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Updatum" Version="1.2.1" />
-  </ItemGroup>
-
 </Project>

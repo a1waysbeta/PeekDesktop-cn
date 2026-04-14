@@ -52,7 +52,7 @@ public sealed class WindowTracker
         foreach (var window in _savedWindows)
         {
             AppDiagnostics.LogWindow("Minimizing window", window.Handle);
-            NativeMethods.ShowWindowAsync(window.Handle, NativeMethods.SW_MINIMIZE);
+            NativeMethods.ShowWindow(window.Handle, NativeMethods.SW_MINIMIZE);
         }
 
         AppDiagnostics.Metric($"MinimizeAll: {_savedWindows.Count} window(s) in {stopwatch.ElapsedMilliseconds}ms");

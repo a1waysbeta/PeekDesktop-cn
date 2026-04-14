@@ -1,27 +1,31 @@
 using System;
-using System.Drawing;
+using System.Diagnostics;
+using System.Net.Http;
+using System.Reflection;
+using System.Text.Json.Serialization;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using Updatum;
 
 namespace PeekDesktop;
 
 internal sealed class AppUpdater
 {
-    private readonly UpdatumManager _updater = new("shanselman", "PeekDesktop")
-    {
-        FetchOnlyLatestRelease = true,
-        InstallUpdateSingleFileExecutableName = "PeekDesktop"
-    };
+    private const string LatestReleaseApiUrl = "https://api.github.com/repos/shanselman/PeekDesktop/releases/latest";
+    private const string ReleasesPageUrl = "https://github.com/shanselman/PeekDesktop/releases/latest";
 
+    private static readonly HttpClient HttpClient = CreateHttpClient();
+
+    private readonly SynchronizationContext? _syncContext = SynchronizationContext.Current;
     private bool _isChecking;
+    private string? _latestReleaseUrl;
+
+    public event EventHandler<UpdateAvailableEventArgs>? UpdateAvailable;
 
     public async Task CheckForUpdatesAsync(bool interactive)
     {
         if (_isChecking)
         {
-            AppDiagnostics.Log("Update check already in progress");
-
             if (interactive)
             {
                 MessageBox.Show(
@@ -40,15 +44,22 @@ internal sealed class AppUpdater
         {
             AppDiagnostics.Log(interactive ? "Manual update check started" : "Background update check started");
 
-            var updateFound = await _updater.CheckForUpdatesAsync();
-            if (!updateFound)
-            {
-                AppDiagnostics.Log("No updates available");
+            GitHubReleaseInfo? release = await GetLatestReleaseAsync();
+            if (release is null || string.IsNullOrWhiteSpace(release.TagName))
+                throw new InvalidOperationException("GitHub did not return a usable release.");
 
+            string latestVersion = NormalizeVersion(release.TagName);
+            string currentVersion = GetCurrentVersion();
+            _latestReleaseUrl = string.IsNullOrWhiteSpace(release.HtmlUrl) ? ReleasesPageUrl : release.HtmlUrl;
+
+            AppDiagnostics.Log($"Current version={currentVersion}, latest version={latestVersion}");
+
+            if (!IsNewerVersion(latestVersion, currentVersion))
+            {
                 if (interactive)
                 {
                     MessageBox.Show(
-                        "You're already on the latest version of PeekDesktop.",
+                        $"You're already on the latest version of PeekDesktop ({currentVersion}).",
                         "PeekDesktop Update",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Information);
@@ -57,15 +68,20 @@ internal sealed class AppUpdater
                 return;
             }
 
-            var release = _updater.LatestRelease;
-            if (release is null)
-                throw new InvalidOperationException("An update was reported, but no release details were returned.");
+            if (!interactive)
+            {
+                RaiseUpdateAvailable(latestVersion, _latestReleaseUrl);
+                return;
+            }
 
-            AppDiagnostics.Log($"Update available: {release.TagName}");
+            DialogResult result = MessageBox.Show(
+                $"PeekDesktop {latestVersion} is available.\n\nOpen the GitHub release page to download it?",
+                "Update Available",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Information);
 
-            using var prompt = new UpdatePromptDialog(release.TagName, _updater.GetChangelog(true) ?? "No release notes available.");
-            if (prompt.ShowDialog() == DialogResult.OK)
-                await DownloadAndInstallUpdateAsync();
+            if (result == DialogResult.Yes)
+                OpenLatestReleasePage();
         }
         catch (Exception ex)
         {
@@ -86,131 +102,108 @@ internal sealed class AppUpdater
         }
     }
 
-    private async Task DownloadAndInstallUpdateAsync()
+    public void OpenLatestReleasePage()
     {
-        try
+        string url = _latestReleaseUrl ?? ReleasesPageUrl;
+        Process.Start(new ProcessStartInfo
         {
-            AppDiagnostics.Log("Downloading update");
+            FileName = url,
+            UseShellExecute = true
+        });
+    }
 
-            using var progress = new UpdateProgressDialog();
-            progress.Show();
-            progress.Refresh();
-
-            var downloadedAsset = await _updater.DownloadUpdateAsync();
-            progress.Close();
-
-            if (downloadedAsset is null)
-                throw new InvalidOperationException("The update download did not complete.");
-
-            var confirm = MessageBox.Show(
-                "The update has been downloaded. PeekDesktop will now close and install the new version.\n\nContinue?",
-                "Install Update",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question);
-
-            if (confirm == DialogResult.Yes)
-                await _updater.InstallUpdateAsync(downloadedAsset);
-        }
-        catch (Exception ex)
+    private void RaiseUpdateAvailable(string version, string releaseUrl)
+    {
+        if (_syncContext is not null)
         {
-            AppDiagnostics.Log($"Update install failed: {ex}");
-            MessageBox.Show(
-                $"PeekDesktop couldn't install the update.\n\n{ex.Message}",
-                "Update Error",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
+            _syncContext.Post(_ => UpdateAvailable?.Invoke(this, new UpdateAvailableEventArgs(version, releaseUrl)), null);
+            return;
         }
+
+        UpdateAvailable?.Invoke(this, new UpdateAvailableEventArgs(version, releaseUrl));
+    }
+
+    private static async Task<GitHubReleaseInfo?> GetLatestReleaseAsync()
+    {
+        using HttpResponseMessage response = await HttpClient.GetAsync(LatestReleaseApiUrl);
+        response.EnsureSuccessStatusCode();
+
+        await using var stream = await response.Content.ReadAsStreamAsync();
+        return await System.Text.Json.JsonSerializer.DeserializeAsync(
+            stream,
+            PeekDesktopJsonContext.Default.GitHubReleaseInfo);
+    }
+
+    private static HttpClient CreateHttpClient()
+    {
+        var client = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(10)
+        };
+
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("PeekDesktop");
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+        return client;
+    }
+
+    private static string GetCurrentVersion()
+    {
+        var assembly = typeof(Program).Assembly;
+        string? informationalVersion = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        string rawVersion = informationalVersion ?? assembly.GetName().Version?.ToString() ?? "0.0.0";
+        return NormalizeVersion(rawVersion);
+    }
+
+    private static bool IsNewerVersion(string latestVersion, string currentVersion)
+    {
+        string latestCore = ExtractNumericPrefix(latestVersion);
+        string currentCore = ExtractNumericPrefix(currentVersion);
+
+        if (Version.TryParse(latestCore, out var latest) && Version.TryParse(currentCore, out var current))
+            return latest > current;
+
+        return !string.Equals(latestVersion, currentVersion, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeVersion(string version)
+    {
+        string normalized = version.Trim();
+
+        if (normalized.StartsWith("v", StringComparison.OrdinalIgnoreCase))
+            normalized = normalized[1..];
+
+        int plusIndex = normalized.IndexOf('+');
+        if (plusIndex >= 0)
+            normalized = normalized[..plusIndex];
+
+        return normalized;
+    }
+
+    private static string ExtractNumericPrefix(string version)
+    {
+        string normalized = NormalizeVersion(version);
+        int dashIndex = normalized.IndexOf('-');
+        return dashIndex >= 0 ? normalized[..dashIndex] : normalized;
     }
 }
 
-internal sealed class UpdatePromptDialog : Form
+internal sealed class UpdateAvailableEventArgs : EventArgs
 {
-    public UpdatePromptDialog(string version, string changelog)
+    public UpdateAvailableEventArgs(string version, string releaseUrl)
     {
-        Text = "PeekDesktop Update Available";
-        StartPosition = FormStartPosition.CenterScreen;
-        FormBorderStyle = FormBorderStyle.FixedDialog;
-        MaximizeBox = false;
-        MinimizeBox = false;
-        ShowInTaskbar = false;
-        ClientSize = new Size(620, 420);
-
-        var titleLabel = new Label
-        {
-            AutoSize = true,
-            Location = new Point(12, 12),
-            Text = $"A new version is available: {version}"
-        };
-
-        var bodyLabel = new Label
-        {
-            AutoSize = true,
-            Location = new Point(12, 38),
-            Text = "Release notes:"
-        };
-
-        var notesBox = new TextBox
-        {
-            Location = new Point(12, 62),
-            Size = new Size(596, 310),
-            Multiline = true,
-            ReadOnly = true,
-            ScrollBars = ScrollBars.Vertical,
-            Text = changelog
-        };
-
-        var laterButton = new Button
-        {
-            Text = "Later",
-            DialogResult = DialogResult.Cancel,
-            Location = new Point(452, 382),
-            Size = new Size(75, 26)
-        };
-
-        var updateButton = new Button
-        {
-            Text = "Update now",
-            DialogResult = DialogResult.OK,
-            Location = new Point(533, 382),
-            Size = new Size(75, 26)
-        };
-
-        Controls.Add(titleLabel);
-        Controls.Add(bodyLabel);
-        Controls.Add(notesBox);
-        Controls.Add(laterButton);
-        Controls.Add(updateButton);
-
-        AcceptButton = updateButton;
-        CancelButton = laterButton;
+        Version = version;
+        ReleaseUrl = releaseUrl;
     }
+
+    public string Version { get; }
+    public string ReleaseUrl { get; }
 }
 
-internal sealed class UpdateProgressDialog : Form
+internal sealed class GitHubReleaseInfo
 {
-    public UpdateProgressDialog()
-    {
-        Text = "PeekDesktop Update";
-        StartPosition = FormStartPosition.CenterScreen;
-        FormBorderStyle = FormBorderStyle.FixedDialog;
-        MaximizeBox = false;
-        MinimizeBox = false;
-        ControlBox = false;
-        ShowInTaskbar = false;
-        ClientSize = new Size(320, 90);
+    [JsonPropertyName("tag_name")]
+    public string TagName { get; set; } = string.Empty;
 
-        Controls.Add(new Label
-        {
-            AutoSize = true,
-            Location = new Point(12, 15),
-            Text = "Downloading the latest release..."
-        });
-
-        Controls.Add(new ProgressBar
-        {
-            Location = new Point(12, 40),
-            Size = new Size(296, 18),
-            Style = ProgressBarStyle.Marquee
-        });
-    }
+    [JsonPropertyName("html_url")]
+    public string HtmlUrl { get; set; } = string.Empty;
 }

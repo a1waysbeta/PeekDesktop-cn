@@ -60,37 +60,46 @@ public sealed class MouseHook : IDisposable
 
     /// <summary>
     /// Hook callback — must return FAST to avoid Windows unhooking us.
-    /// Only performs a lightweight WindowFromPoint check, then posts
-    /// the real work to the message loop.
+    /// It captures the click point and posts the heavier classification
+    /// work to the UI thread.
     /// </summary>
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
         if (nCode >= 0 && wParam == (IntPtr)NativeMethods.WM_LBUTTONDOWN)
         {
             var hookStruct = Marshal.PtrToStructure<NativeMethods.MSLLHOOKSTRUCT>(lParam);
-            IntPtr windowUnderCursor = NativeMethods.WindowFromPoint(hookStruct.pt);
-            AppDiagnostics.LogWindow("Mouse click target", windowUnderCursor);
-            DesktopClickTarget clickTarget = DesktopDetector.GetClickTarget(windowUnderCursor, hookStruct.pt);
-            AppDiagnostics.Log($"Mouse click classification: {clickTarget}");
+            var clickPoint = hookStruct.pt;
+            IntPtr windowUnderCursor = NativeMethods.WindowFromPoint(clickPoint);
 
-            switch (clickTarget)
-            {
-                case DesktopClickTarget.DesktopBackground:
-                    // Post to message loop — don't block the hook callback
-                    _syncContext?.Post(_ => DesktopClicked?.Invoke(this, EventArgs.Empty), null);
-                    break;
-
-                case DesktopClickTarget.DesktopIcon:
-                    _syncContext?.Post(_ => DesktopIconClicked?.Invoke(this, EventArgs.Empty), null);
-                    break;
-
-                default:
-                    _syncContext?.Post(_ => NonDesktopClicked?.Invoke(this, EventArgs.Empty), null);
-                    break;
-            }
+            if (_syncContext is not null)
+                _syncContext.Post(_ => HandleMouseClick(windowUnderCursor, clickPoint), null);
+            else
+                HandleMouseClick(windowUnderCursor, clickPoint);
         }
 
         return NativeMethods.CallNextHookEx(_hookId, nCode, wParam, lParam);
+    }
+
+    private void HandleMouseClick(IntPtr windowUnderCursor, NativeMethods.POINT clickPoint)
+    {
+        AppDiagnostics.LogWindow("Mouse click target", windowUnderCursor);
+        DesktopClickTarget clickTarget = DesktopDetector.GetClickTarget(windowUnderCursor, clickPoint);
+        AppDiagnostics.Log($"Mouse click classification: {clickTarget}");
+
+        switch (clickTarget)
+        {
+            case DesktopClickTarget.DesktopBackground:
+                DesktopClicked?.Invoke(this, EventArgs.Empty);
+                break;
+
+            case DesktopClickTarget.DesktopIcon:
+                DesktopIconClicked?.Invoke(this, EventArgs.Empty);
+                break;
+
+            default:
+                NonDesktopClicked?.Invoke(this, EventArgs.Empty);
+                break;
+        }
     }
 
     public void Dispose()

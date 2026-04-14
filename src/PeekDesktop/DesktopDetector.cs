@@ -24,11 +24,20 @@ public static class DesktopDetector
         if (!IsDesktopRelatedWindow(hwnd))
             return DesktopClickTarget.NonDesktop;
 
-        if (IsDesktopIconWindow(hwnd) && NativeMethods.TryGetAccessibleDetailsAtPoint(point, out int role, out string name))
+        if (IsDesktopIconWindow(hwnd))
         {
-            AppDiagnostics.Log($"Desktop accessibility hit-test: role=0x{role:X} name=\"{name}\"");
-            if (role == NativeMethods.ROLE_SYSTEM_LISTITEM)
-                return DesktopClickTarget.DesktopIcon;
+            if (NativeMethods.TryIsDesktopListViewItemAtPoint(hwnd, point, out bool isOnDesktopItem))
+            {
+                AppDiagnostics.Log($"Desktop list-view hit-test: {(isOnDesktopItem ? "icon" : "background")}");
+                return isOnDesktopItem ? DesktopClickTarget.DesktopIcon : DesktopClickTarget.DesktopBackground;
+            }
+
+            if (NativeMethods.TryGetAccessibleDetailsAtPoint(point, out int role, out string name))
+            {
+                AppDiagnostics.Log($"Desktop accessibility hit-test: role=0x{role:X} name=\"{name}\"");
+                if (role == NativeMethods.ROLE_SYSTEM_LISTITEM)
+                    return DesktopClickTarget.DesktopIcon;
+            }
         }
 
         return DesktopClickTarget.DesktopBackground;

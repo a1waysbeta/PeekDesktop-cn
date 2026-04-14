@@ -66,7 +66,7 @@ jobs:
         dotnet publish src/PeekDesktop/PeekDesktop.csproj `
           -c Release `
           -r win-x64 `
-          /p:PublishSingleFile=true `
+          /p:PublishAot=true `
           /p:DebugType=None `
           /p:DebugSymbols=false `
           /p:Version=$env:VERSION `
@@ -80,7 +80,7 @@ jobs:
         dotnet publish src/PeekDesktop/PeekDesktop.csproj `
           -c Release `
           -r win-arm64 `
-          /p:PublishSingleFile=true `
+          /p:PublishAot=true `
           /p:DebugType=None `
           /p:DebugSymbols=false `
           /p:Version=$env:VERSION `
@@ -160,12 +160,13 @@ jobs:
           | `PeekDesktop-${{ github.ref_name }}-win-x64.zip` | Intel/AMD 64-bit Windows |
           | `PeekDesktop-${{ github.ref_name }}-win-arm64.zip` | ARM64 Windows (Surface Pro X, etc.) |
 
-          **Self-contained** - Extract and run, no .NET installation required.
+          **Native AOT, self-contained** - Extract and run, no .NET installation required.
 
           ### 👀 How It Works
           - Click empty wallpaper -> all windows minimize
           - Click or drag desktop icons without triggering peek
           - Click any window, the taskbar, or the wallpaper again -> everything restores
+          - Check for updates -> opens the latest GitHub Release page
 
           ---
         append_body: true
