@@ -223,6 +223,16 @@ internal static class NativeMethods
         return sb.ToString();
     }
 
+    public static string DescribeWindow(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero)
+            return "hwnd=0x0 class=<none> title=<none>";
+
+        string className = GetWindowClassName(hwnd);
+        string title = GetWindowTitle(hwnd);
+        return $"hwnd=0x{hwnd.ToInt64():X} class={className} title=\"{title}\"";
+    }
+
     /// <summary>
     /// Returns true if the window is cloaked (hidden by DWM, e.g. on another virtual desktop).
     /// </summary>

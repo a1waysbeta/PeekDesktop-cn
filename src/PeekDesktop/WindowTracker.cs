@@ -13,6 +13,7 @@ public sealed class WindowTracker
     private readonly List<WindowInfo> _savedWindows = new();
 
     public bool HasWindows => _savedWindows.Count > 0;
+    public int SavedWindowCount => _savedWindows.Count;
 
     /// <summary>
     /// Snapshot all visible, non-system top-level windows and their placements.
@@ -30,10 +31,13 @@ public sealed class WindowTracker
                 if (NativeMethods.GetWindowPlacement(hwnd, ref placement))
                 {
                     _savedWindows.Add(new WindowInfo(hwnd, placement));
+                    AppDiagnostics.LogWindow("Captured window", hwnd);
                 }
             }
             return true;
         }, IntPtr.Zero);
+
+        AppDiagnostics.Log($"Capture complete: {_savedWindows.Count} window(s) saved");
     }
 
     /// <summary>
@@ -43,6 +47,7 @@ public sealed class WindowTracker
     {
         foreach (var window in _savedWindows)
         {
+            AppDiagnostics.LogWindow("Minimizing window", window.Handle);
             NativeMethods.ShowWindow(window.Handle, NativeMethods.SW_MINIMIZE);
         }
     }
@@ -60,13 +65,18 @@ public sealed class WindowTracker
 
             // Skip windows that were destroyed while we were peeking
             if (!NativeMethods.IsWindow(info.Handle))
+            {
+                AppDiagnostics.LogWindow("Skipping destroyed window", info.Handle);
                 continue;
+            }
 
             var placement = info.Placement;
+            AppDiagnostics.LogWindow("Restoring window", info.Handle);
             NativeMethods.SetWindowPlacement(info.Handle, ref placement);
         }
 
         _savedWindows.Clear();
+        AppDiagnostics.Log("Restore list cleared");
     }
 
     /// <summary>

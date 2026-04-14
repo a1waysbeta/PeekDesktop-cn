@@ -68,8 +68,9 @@ public sealed class TrayIcon : IDisposable
         var aboutItem = new ToolStripMenuItem("About PeekDesktop");
         aboutItem.Click += (_, _) =>
         {
+            string version = Application.ProductVersion;
             MessageBox.Show(
-                "PeekDesktop v1.0\n\n" +
+                $"PeekDesktop v{version}\n\n" +
                 "Click your desktop wallpaper to peek at your desktop,\n" +
                 "just like macOS Sonoma.\n\n" +
                 "Click any window or the taskbar to restore.\n\n" +

@@ -23,6 +23,11 @@ public sealed class MouseHook : IDisposable
     /// </summary>
     public event EventHandler? DesktopClicked;
 
+    /// <summary>
+    /// Raised (on the UI thread) when a left-click lands on something other than the desktop.
+    /// </summary>
+    public event EventHandler? NonDesktopClicked;
+
     public void Install()
     {
         if (_hookId != IntPtr.Zero)
@@ -35,6 +40,7 @@ public sealed class MouseHook : IDisposable
             _hookProc,
             NativeMethods.GetModuleHandle(null),
             0);
+        AppDiagnostics.Log($"Mouse hook installed: 0x{_hookId.ToInt64():X}");
     }
 
     public void Uninstall()
@@ -42,6 +48,7 @@ public sealed class MouseHook : IDisposable
         if (_hookId != IntPtr.Zero)
         {
             NativeMethods.UnhookWindowsHookEx(_hookId);
+            AppDiagnostics.Log($"Mouse hook uninstalled: 0x{_hookId.ToInt64():X}");
             _hookId = IntPtr.Zero;
         }
     }
@@ -57,11 +64,16 @@ public sealed class MouseHook : IDisposable
         {
             var hookStruct = Marshal.PtrToStructure<NativeMethods.MSLLHOOKSTRUCT>(lParam);
             IntPtr windowUnderCursor = NativeMethods.WindowFromPoint(hookStruct.pt);
+            AppDiagnostics.LogWindow("Mouse click target", windowUnderCursor);
 
             if (DesktopDetector.IsDesktopRelatedWindow(windowUnderCursor))
             {
                 // Post to message loop — don't block the hook callback
                 _syncContext?.Post(_ => DesktopClicked?.Invoke(this, EventArgs.Empty), null);
+            }
+            else
+            {
+                _syncContext?.Post(_ => NonDesktopClicked?.Invoke(this, EventArgs.Empty), null);
             }
         }
 

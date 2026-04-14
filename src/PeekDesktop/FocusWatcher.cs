@@ -41,6 +41,7 @@ public sealed class FocusWatcher : IDisposable
             _winEventProc,
             0, 0,
             NativeMethods.WINEVENT_OUTOFCONTEXT);
+        AppDiagnostics.Log($"Focus watcher started: 0x{_hookId.ToInt64():X}");
     }
 
     public void Stop()
@@ -48,6 +49,7 @@ public sealed class FocusWatcher : IDisposable
         if (_hookId != IntPtr.Zero)
         {
             NativeMethods.UnhookWinEvent(_hookId);
+            AppDiagnostics.Log($"Focus watcher stopped: 0x{_hookId.ToInt64():X}");
             _hookId = IntPtr.Zero;
         }
     }
@@ -58,6 +60,7 @@ public sealed class FocusWatcher : IDisposable
     {
         if (eventType == NativeMethods.EVENT_SYSTEM_FOREGROUND)
         {
+            AppDiagnostics.LogWindow("Foreground event", hwnd);
             FocusChanged?.Invoke(this, new FocusChangedEventArgs(hwnd));
         }
     }
