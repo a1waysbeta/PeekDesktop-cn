@@ -23,9 +23,11 @@ public sealed class DesktopPeek : IDisposable
 
     public bool IsEnabled { get; set; } = true;
     public bool IsPeeking => _isPeeking;
+    public PeekMode PeekMode { get; set; }
 
-    public DesktopPeek()
+    public DesktopPeek(Settings settings)
     {
+        PeekMode = settings.PeekMode;
         AppDiagnostics.Log("DesktopPeek created");
         _mouseHook.DesktopClicked += OnDesktopClicked;
         _mouseHook.DesktopIconClicked += OnDesktopIconClicked;
@@ -134,8 +136,13 @@ public sealed class DesktopPeek : IDisposable
             _windowTracker.CaptureWindows();
             if (_windowTracker.HasWindows)
             {
-                AppDiagnostics.Log($"Captured {_windowTracker.SavedWindowCount} window(s); minimizing now");
-                _windowTracker.MinimizeAll();
+                AppDiagnostics.Log($"Captured {_windowTracker.SavedWindowCount} window(s); applying {PeekMode} effect");
+
+                if (PeekMode == PeekMode.FlyAway)
+                    _windowTracker.FlyAwayAll();
+                else
+                    _windowTracker.MinimizeAll();
+
                 _isPeeking = true;
                 _ignoreFocusUntil = Environment.TickCount64 + PostPeekFocusGracePeriodMs;
                 AppDiagnostics.Log($"Peek mode active; ignoring focus churn for {PostPeekFocusGracePeriodMs}ms");
@@ -161,7 +168,7 @@ public sealed class DesktopPeek : IDisposable
         try
         {
             _ignoreFocusUntil = 0;
-            _windowTracker.RestoreAll();
+            _windowTracker.RestoreAll(PeekMode);
             _isPeeking = false;
             AppDiagnostics.Log("Restore complete; returned to idle");
         }

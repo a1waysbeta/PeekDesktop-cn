@@ -19,6 +19,7 @@ public sealed class Settings
 
     public bool Enabled { get; set; } = true;
     public bool StartWithWindows { get; set; } = false;
+    public PeekMode PeekMode { get; set; } = PeekMode.FlyAway;
 
     public static Settings Load()
     {

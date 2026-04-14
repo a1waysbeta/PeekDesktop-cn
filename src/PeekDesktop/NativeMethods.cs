@@ -18,13 +18,24 @@ internal static class NativeMethods
     public const int WM_LBUTTONDOWN = 0x0201;
 
     // --- ShowWindow commands ---
+    public const int SW_SHOWNORMAL = 1;
+    public const int SW_MAXIMIZE = 3;
+    public const int SW_SHOWNOACTIVATE = 4;
     public const int SW_MINIMIZE = 6;
+    public const int SW_RESTORE = 9;
 
     // --- GetWindow relationship ---
     public const uint GW_OWNER = 4;
 
     // --- Window style indices ---
     public const int GWL_EXSTYLE = -20;
+
+    // --- SetWindowPos flags ---
+    public const uint SWP_NOZORDER = 0x0004;
+    public const uint SWP_NOACTIVATE = 0x0010;
+    public const uint SWP_ASYNCWINDOWPOS = 0x4000;
+    public const uint SWP_NOOWNERZORDER = 0x0200;
+    public const uint SWP_NOSENDCHANGING = 0x0400;
 
     // --- Extended window styles ---
     public const long WS_EX_TOOLWINDOW = 0x00000080L;
@@ -203,6 +214,21 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool SetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT lpwndpl);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetWindowPos(
+        IntPtr hWnd,
+        IntPtr hWndInsertAfter,
+        int X,
+        int Y,
+        int cx,
+        int cy,
+        uint uFlags);
 
     #endregion
 

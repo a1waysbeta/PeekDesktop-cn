@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Windows.Forms;
 
 namespace PeekDesktop;
 
@@ -11,6 +14,10 @@ namespace PeekDesktop;
 /// </summary>
 public sealed class WindowTracker
 {
+    private const int AnimationSteps = 12;
+    private const int AnimationDurationMs = 160;
+    private const int OffscreenMargin = 64;
+
     private readonly List<WindowInfo> _savedWindows = new();
 
     public bool HasWindows => _savedWindows.Count > 0;
@@ -32,7 +39,10 @@ public sealed class WindowTracker
                 placement.length = Marshal.SizeOf<NativeMethods.WINDOWPLACEMENT>();
                 if (NativeMethods.GetWindowPlacement(hwnd, ref placement))
                 {
-                    _savedWindows.Add(new WindowInfo(hwnd, placement));
+                    if (!NativeMethods.GetWindowRect(hwnd, out NativeMethods.RECT bounds))
+                        bounds = placement.rcNormalPosition;
+
+                    _savedWindows.Add(new WindowInfo(hwnd, placement, bounds));
                     AppDiagnostics.LogWindow("Captured window", hwnd);
                 }
             }
@@ -59,13 +69,66 @@ public sealed class WindowTracker
     }
 
     /// <summary>
+    /// Move captured windows toward the corner of the screen they are already closest to.
+    /// This is an experiment to mimic macOS-style "show desktop" animation.
+    /// </summary>
+    public void FlyAwayAll()
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var animationWindows = new List<AnimatedWindow>(_savedWindows.Count);
+
+        foreach (var window in _savedWindows)
+        {
+            if (!NativeMethods.IsWindow(window.Handle))
+                continue;
+
+            var workingPlacement = window.Placement;
+            workingPlacement.length = Marshal.SizeOf<NativeMethods.WINDOWPLACEMENT>();
+
+            if (workingPlacement.showCmd == NativeMethods.SW_MAXIMIZE)
+            {
+                workingPlacement.showCmd = NativeMethods.SW_SHOWNORMAL;
+                NativeMethods.SetWindowPlacement(window.Handle, ref workingPlacement);
+            }
+
+            NativeMethods.ShowWindow(window.Handle, NativeMethods.SW_SHOWNOACTIVATE);
+
+            NativeMethods.RECT startBounds = GetCurrentBounds(window);
+            NativeMethods.RECT targetBounds = ComputeFlyAwayTarget(startBounds);
+            animationWindows.Add(new AnimatedWindow(window.Handle, startBounds, targetBounds));
+        }
+
+        AnimateWindows(animationWindows);
+        AppDiagnostics.Metric($"FlyAwayAll: {animationWindows.Count} window(s) in {stopwatch.ElapsedMilliseconds}ms");
+    }
+
+    /// <summary>
     /// Restore every captured window to its saved placement.
     /// Restores bottom-to-top to preserve Z-order, and does NOT steal focus.
     /// </summary>
-    public void RestoreAll()
+    public void RestoreAll(PeekMode peekMode = PeekMode.Minimize)
     {
         var stopwatch = Stopwatch.StartNew();
         int restoredCount = 0;
+
+        if (peekMode == PeekMode.FlyAway)
+        {
+            var animationWindows = new List<AnimatedWindow>(_savedWindows.Count);
+
+            foreach (var info in _savedWindows)
+            {
+                if (!NativeMethods.IsWindow(info.Handle))
+                    continue;
+
+                NativeMethods.ShowWindow(info.Handle, NativeMethods.SW_SHOWNOACTIVATE);
+
+                NativeMethods.RECT startBounds = GetCurrentBounds(info);
+                NativeMethods.RECT endBounds = GetRestoreBounds(info);
+                animationWindows.Add(new AnimatedWindow(info.Handle, startBounds, endBounds));
+            }
+
+            AnimateWindows(animationWindows);
+        }
 
         // Restore in reverse order (bottom windows first) to preserve Z-order
         for (int i = _savedWindows.Count - 1; i >= 0; i--)
@@ -143,5 +206,113 @@ public sealed class WindowTracker
         };
     }
 
-    private record WindowInfo(IntPtr Handle, NativeMethods.WINDOWPLACEMENT Placement);
+    private static NativeMethods.RECT GetCurrentBounds(WindowInfo window)
+    {
+        if (NativeMethods.GetWindowRect(window.Handle, out NativeMethods.RECT bounds))
+            return bounds;
+
+        return window.Bounds;
+    }
+
+    private static NativeMethods.RECT GetRestoreBounds(WindowInfo window)
+    {
+        if (window.Placement.showCmd == NativeMethods.SW_MAXIMIZE)
+            return window.Placement.rcNormalPosition;
+
+        return window.Bounds;
+    }
+
+    private static NativeMethods.RECT ComputeFlyAwayTarget(NativeMethods.RECT startBounds)
+    {
+        Rectangle rectangle = Rectangle.FromLTRB(startBounds.Left, startBounds.Top, startBounds.Right, startBounds.Bottom);
+        Rectangle screenBounds = Screen.FromRectangle(rectangle).WorkingArea;
+
+        int width = Math.Max(1, startBounds.Right - startBounds.Left);
+        int height = Math.Max(1, startBounds.Bottom - startBounds.Top);
+        int centerX = startBounds.Left + (width / 2);
+        int centerY = startBounds.Top + (height / 2);
+
+        bool moveLeft = centerX < screenBounds.Left + (screenBounds.Width / 2);
+        bool moveUp = centerY < screenBounds.Top + (screenBounds.Height / 2);
+
+        int targetLeft = moveLeft
+            ? screenBounds.Left - width - OffscreenMargin
+            : screenBounds.Right + OffscreenMargin;
+
+        int targetTop = moveUp
+            ? screenBounds.Top - height - OffscreenMargin
+            : screenBounds.Bottom + OffscreenMargin;
+
+        return new NativeMethods.RECT
+        {
+            Left = targetLeft,
+            Top = targetTop,
+            Right = targetLeft + width,
+            Bottom = targetTop + height
+        };
+    }
+
+    private static void AnimateWindows(IReadOnlyList<AnimatedWindow> windows)
+    {
+        if (windows.Count == 0)
+            return;
+
+        int sleepMs = Math.Max(1, AnimationDurationMs / AnimationSteps);
+        const uint flags = NativeMethods.SWP_NOACTIVATE
+                         | NativeMethods.SWP_NOZORDER
+                         | NativeMethods.SWP_NOOWNERZORDER
+                         | NativeMethods.SWP_NOSENDCHANGING
+                         | NativeMethods.SWP_ASYNCWINDOWPOS;
+
+        for (int step = 1; step <= AnimationSteps; step++)
+        {
+            double progress = EaseOutCubic(step / (double)AnimationSteps);
+
+            foreach (var window in windows)
+            {
+                if (!NativeMethods.IsWindow(window.Handle))
+                    continue;
+
+                NativeMethods.RECT frame = LerpRect(window.StartBounds, window.EndBounds, progress);
+                int width = Math.Max(1, frame.Right - frame.Left);
+                int height = Math.Max(1, frame.Bottom - frame.Top);
+
+                NativeMethods.SetWindowPos(
+                    window.Handle,
+                    IntPtr.Zero,
+                    frame.Left,
+                    frame.Top,
+                    width,
+                    height,
+                    flags);
+            }
+
+            Thread.Sleep(sleepMs);
+        }
+    }
+
+    private static double EaseOutCubic(double t)
+    {
+        double inverse = 1d - t;
+        return 1d - (inverse * inverse * inverse);
+    }
+
+    private static NativeMethods.RECT LerpRect(NativeMethods.RECT from, NativeMethods.RECT to, double t)
+    {
+        return new NativeMethods.RECT
+        {
+            Left = Lerp(from.Left, to.Left, t),
+            Top = Lerp(from.Top, to.Top, t),
+            Right = Lerp(from.Right, to.Right, t),
+            Bottom = Lerp(from.Bottom, to.Bottom, t)
+        };
+    }
+
+    private static int Lerp(int from, int to, double t)
+    {
+        return (int)Math.Round(from + ((to - from) * t));
+    }
+
+    private record WindowInfo(IntPtr Handle, NativeMethods.WINDOWPLACEMENT Placement, NativeMethods.RECT Bounds);
+    private record AnimatedWindow(IntPtr Handle, NativeMethods.RECT StartBounds, NativeMethods.RECT EndBounds);
 }

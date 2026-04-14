@@ -76,6 +76,32 @@ internal sealed class TrayIcon : IDisposable
             Settings.SetAutoStart(startupItem.Checked);
         };
 
+        var classicModeItem = new ToolStripMenuItem("Classic Minimize")
+        {
+            Checked = _settings.PeekMode == PeekMode.Minimize
+        };
+
+        var flyAwayModeItem = new ToolStripMenuItem("Fly Away (Experimental)")
+        {
+            Checked = _settings.PeekMode == PeekMode.FlyAway
+        };
+
+        void SetPeekMode(PeekMode peekMode)
+        {
+            _settings.PeekMode = peekMode;
+            _desktopPeek.PeekMode = peekMode;
+            classicModeItem.Checked = peekMode == PeekMode.Minimize;
+            flyAwayModeItem.Checked = peekMode == PeekMode.FlyAway;
+            _settings.Save();
+        }
+
+        classicModeItem.Click += (_, _) => SetPeekMode(PeekMode.Minimize);
+        flyAwayModeItem.Click += (_, _) => SetPeekMode(PeekMode.FlyAway);
+
+        var peekStyleMenu = new ToolStripMenuItem("Peek Style");
+        peekStyleMenu.DropDownItems.Add(classicModeItem);
+        peekStyleMenu.DropDownItems.Add(flyAwayModeItem);
+
         var aboutItem = new ToolStripMenuItem("About PeekDesktop");
         aboutItem.Click += (_, _) =>
         {
@@ -85,6 +111,8 @@ internal sealed class TrayIcon : IDisposable
                 "Click your desktop wallpaper to peek at your desktop,\n" +
                 "just like macOS Sonoma.\n\n" +
                 "Click any window or the taskbar to restore.\n" +
+                "Peek Style lets you switch between classic minimize\n" +
+                "and the fly-away experiment.\n\n" +
                 "Updates come from GitHub Releases.\n\n" +
                 "github.com/shanselman/PeekDesktop",
                 "About PeekDesktop",
@@ -104,6 +132,7 @@ internal sealed class TrayIcon : IDisposable
 
         menu.Items.Add(_enabledItem);
         menu.Items.Add(startupItem);
+        menu.Items.Add(peekStyleMenu);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(aboutItem);
         menu.Items.Add(updatesItem);

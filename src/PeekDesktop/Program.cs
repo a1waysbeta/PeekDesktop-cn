@@ -58,7 +58,7 @@ public sealed class PeekDesktopContext : ApplicationContext
     private void Initialize()
     {
         var settings = Settings.Load();
-        _desktopPeek = new DesktopPeek();
+        _desktopPeek = new DesktopPeek(settings);
         _appUpdater = new AppUpdater();
         _trayIcon = new TrayIcon(_desktopPeek, _appUpdater, settings, () => ExitThread());
 
