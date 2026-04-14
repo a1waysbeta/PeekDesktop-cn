@@ -66,7 +66,7 @@ Right-click the tray icon for options:
 
 ## Build from Source
 
-**Requirements:** [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+**Requirements:** [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 
 ```bash
 git clone https://github.com/shanselman/PeekDesktop.git
@@ -88,6 +88,16 @@ dotnet publish src/PeekDesktop/PeekDesktop.csproj -c Release -r win-x64 --self-c
 
 # For ARM64
 dotnet publish src/PeekDesktop/PeekDesktop.csproj -c Release -r win-arm64 --self-contained -p:PublishSingleFile=true
+```
+
+### Publish a Native AOT build
+
+```bash
+# For Intel/AMD
+dotnet publish src/PeekDesktop/PeekDesktop.csproj -c Release -r win-x64 --self-contained -p:PublishAot=true
+
+# For ARM64
+dotnet publish src/PeekDesktop/PeekDesktop.csproj -c Release -r win-arm64 --self-contained -p:PublishAot=true
 ```
 
 ## Architecture

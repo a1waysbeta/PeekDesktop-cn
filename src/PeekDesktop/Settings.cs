@@ -27,7 +27,7 @@ public sealed class Settings
             if (File.Exists(SettingsPath))
             {
                 string json = File.ReadAllText(SettingsPath);
-                return JsonSerializer.Deserialize<Settings>(json) ?? new Settings();
+                return JsonSerializer.Deserialize(json, PeekDesktopJsonContext.Default.Settings) ?? new Settings();
             }
         }
         catch
@@ -42,10 +42,7 @@ public sealed class Settings
         try
         {
             Directory.CreateDirectory(SettingsDir);
-            string json = JsonSerializer.Serialize(this, new JsonSerializerOptions
-            {
-                WriteIndented = true
-            });
+            string json = JsonSerializer.Serialize(this, PeekDesktopJsonContext.Default.Settings);
             File.WriteAllText(SettingsPath, json);
         }
         catch

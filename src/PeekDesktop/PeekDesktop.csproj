@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>PeekDesktop</AssemblyName>
     <RootNamespace>PeekDesktop</RootNamespace>
@@ -13,6 +13,10 @@
     <Authors>Scott Hanselman</Authors>
     <Description>Click your desktop to peek at it — just like macOS Sonoma.</Description>
     <RepositoryUrl>https://github.com/shanselman/PeekDesktop</RepositoryUrl>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(PublishAot)' == 'true'">
+    <_SuppressWinFormsTrimError>true</_SuppressWinFormsTrimError>
   </PropertyGroup>
 
 </Project>
