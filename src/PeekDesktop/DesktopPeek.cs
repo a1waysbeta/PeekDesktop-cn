@@ -48,6 +48,7 @@ public sealed class DesktopPeek : IDisposable
         PeekMode = NormalizePeekMode(settings.PeekMode);
         _mouseHook.RequireDoubleClick = settings.RequireDoubleClick;
         _pauseWhileFullscreenAppActive = settings.PauseWhileFullscreenAppActive;
+        DesktopDetector.PeekOnTaskbarClick = settings.PeekOnTaskbarClick;
         AppDiagnostics.Log("DesktopPeek created");
         _mouseHook.DesktopClicked += OnDesktopClicked;
         _mouseHook.DesktopIconClicked += OnDesktopIconClicked;
@@ -59,6 +60,12 @@ public sealed class DesktopPeek : IDisposable
     {
         _mouseHook.RequireDoubleClick = requireDoubleClick;
         AppDiagnostics.Log($"RequireDoubleClick set to {requireDoubleClick}");
+    }
+
+    public void SetPeekOnTaskbarClick(bool enabled)
+    {
+        DesktopDetector.PeekOnTaskbarClick = enabled;
+        AppDiagnostics.Log($"PeekOnTaskbarClick set to {enabled}");
     }
 
     public void SetPauseWhileFullscreenAppActive(bool enabled)

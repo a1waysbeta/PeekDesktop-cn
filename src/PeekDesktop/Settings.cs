@@ -22,6 +22,7 @@ public sealed class Settings
     public bool StartWithWindows { get; set; } = false;
     public bool RequireDoubleClick { get; set; } = false;
     public bool PauseWhileFullscreenAppActive { get; set; } = true;
+    public bool PeekOnTaskbarClick { get; set; } = false;
     public PeekMode PeekMode { get; set; } = PeekMode.NativeShowDesktop;
 
     public static Settings Load()
@@ -113,6 +114,11 @@ public sealed class Settings
                 reader.Read();
                 settings.PauseWhileFullscreenAppActive = reader.GetBoolean();
             }
+            else if (reader.ValueTextEquals("PeekOnTaskbarClick"u8))
+            {
+                reader.Read();
+                settings.PeekOnTaskbarClick = reader.GetBoolean();
+            }
             else if (reader.ValueTextEquals("PeekMode"u8))
             {
                 reader.Read();
@@ -137,6 +143,7 @@ public sealed class Settings
         writer.WriteBoolean("StartWithWindows"u8, StartWithWindows);
         writer.WriteBoolean("RequireDoubleClick"u8, RequireDoubleClick);
         writer.WriteBoolean("PauseWhileFullscreenAppActive"u8, PauseWhileFullscreenAppActive);
+        writer.WriteBoolean("PeekOnTaskbarClick"u8, PeekOnTaskbarClick);
         writer.WriteNumber("PeekMode"u8, (int)PeekMode);
         writer.WriteEndObject();
 

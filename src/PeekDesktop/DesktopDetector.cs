@@ -16,11 +16,22 @@ internal enum DesktopClickTarget
 public static class DesktopDetector
 {
     /// <summary>
+    /// When true, clicks on empty taskbar area also trigger desktop peek.
+    /// </summary>
+    public static bool PeekOnTaskbarClick { get; set; }
+
+    /// <summary>
     /// Classifies a click as hitting the desktop wallpaper, a desktop icon,
     /// or something unrelated to the desktop.
     /// </summary>
     internal static DesktopClickTarget GetClickTarget(IntPtr hwnd, NativeMethods.POINT point)
     {
+        if (PeekOnTaskbarClick && IsTaskbarBlankAreaWindow(hwnd, point))
+        {
+            AppDiagnostics.Log("Taskbar blank-area click detected");
+            return DesktopClickTarget.DesktopBackground;
+        }
+
         if (!IsDesktopRelatedWindow(hwnd))
         {
             AppDiagnostics.Log($"Desktop relationship check failed at {NativeMethods.DescribePoint(point)}");
@@ -149,6 +160,37 @@ public static class DesktopDetector
             current = NativeMethods.GetParent(current);
         }
 
+        return false;
+    }
+
+    private static bool IsTaskbarBlankAreaWindow(IntPtr hwnd, NativeMethods.POINT screenPoint)
+    {
+        string className = NativeMethods.GetWindowClassName(hwnd);
+        if (!string.Equals(className, "Shell_TrayWnd", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(className, "Shell_SecondaryTrayWnd", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        // WindowFromPoint returned Shell_TrayWnd itself. On Win11 this can happen
+        // both for truly blank space AND for areas covered by transparent composition
+        // overlays. Use ChildWindowFromPoint to find the real child, then skip
+        // transparent overlay classes that cover the whole taskbar.
+        NativeMethods.POINT clientPt = screenPoint;
+        NativeMethods.ScreenToClient(hwnd, ref clientPt);
+        IntPtr child = NativeMethods.RealChildWindowFromPoint(hwnd, clientPt);
+
+        if (child == IntPtr.Zero || child == hwnd)
+            return true; // No child at all — blank
+
+        // Skip transparent composition overlays that span the whole taskbar
+        string childClass = NativeMethods.GetWindowClassName(child);
+        if (childClass.StartsWith("Windows.UI.Composition", StringComparison.OrdinalIgnoreCase)
+            || childClass.StartsWith("Windows.UI.Input", StringComparison.OrdinalIgnoreCase))
+        {
+            AppDiagnostics.Log($"Taskbar blank check: ignoring overlay child class={childClass}");
+            return true;
+        }
+
+        AppDiagnostics.Log($"Taskbar blank check: child=0x{child.ToInt64():X} class={childClass} — not blank");
         return false;
     }
 }
