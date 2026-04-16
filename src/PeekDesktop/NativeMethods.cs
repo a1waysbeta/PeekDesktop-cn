@@ -698,6 +698,14 @@ internal static class NativeMethods
         if (processId == 0)
             return false;
 
+        // Only perform cross-process memory operations against Explorer
+        if (!TryGetProcessName(processId, out string procName)
+            || !string.Equals(procName, "explorer", StringComparison.OrdinalIgnoreCase))
+        {
+            AppDiagnostics.Log($"ListView hit-test skipped: target process '{procName}' is not Explorer");
+            return false;
+        }
+
         IntPtr processHandle = OpenProcess(PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE, false, processId);
         if (processHandle == IntPtr.Zero)
             return false;

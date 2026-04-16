@@ -77,9 +77,11 @@ internal static class WinHttp
             if (statusCode < 200 || statusCode >= 300)
                 throw new InvalidOperationException($"HTTP {statusCode}");
 
-            // Read body
+            // Read body (cap at 1 MB to prevent memory exhaustion)
+            const int maxResponseBytes = 1024 * 1024;
             var sb = new StringBuilder(4096);
             byte[] buffer = new byte[8192];
+            int totalRead = 0;
 
             while (true)
             {
@@ -93,6 +95,10 @@ internal static class WinHttp
                     break;
                 if (bytesRead == 0)
                     break;
+
+                totalRead += (int)bytesRead;
+                if (totalRead > maxResponseBytes)
+                    throw new InvalidOperationException($"Response exceeded {maxResponseBytes} byte limit");
 
                 sb.Append(Encoding.UTF8.GetString(buffer, 0, (int)bytesRead));
             }
