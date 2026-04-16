@@ -179,18 +179,30 @@ public static class DesktopDetector
         IntPtr child = NativeMethods.RealChildWindowFromPoint(hwnd, clientPt);
 
         if (child == IntPtr.Zero || child == hwnd)
-            return true; // No child at all — blank
+            return ClassifyTaskbarOverlayPoint(screenPoint);
 
         // Skip transparent composition overlays that span the whole taskbar
         string childClass = NativeMethods.GetWindowClassName(child);
         if (childClass.StartsWith("Windows.UI.Composition", StringComparison.OrdinalIgnoreCase)
             || childClass.StartsWith("Windows.UI.Input", StringComparison.OrdinalIgnoreCase))
         {
-            AppDiagnostics.Log($"Taskbar blank check: ignoring overlay child class={childClass}");
-            return true;
+            AppDiagnostics.Log($"Taskbar blank check: overlay child class={childClass}; deferring to UIA");
+            return ClassifyTaskbarOverlayPoint(screenPoint);
         }
 
         AppDiagnostics.Log($"Taskbar blank check: child=0x{child.ToInt64():X} class={childClass} — not blank");
         return false;
+    }
+
+    private static bool ClassifyTaskbarOverlayPoint(NativeMethods.POINT screenPoint)
+    {
+        if (!UiAutomationCom.TryIsTaskbarElementInteractiveAtPoint(screenPoint, out bool isInteractive, out string description))
+        {
+            AppDiagnostics.Log($"Taskbar blank check: UIA unavailable at {NativeMethods.DescribePoint(screenPoint)}; treating as non-blank");
+            return false;
+        }
+
+        AppDiagnostics.Log($"Taskbar UIA classification at {NativeMethods.DescribePoint(screenPoint)}: {description}");
+        return !isInteractive;
     }
 }
