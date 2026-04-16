@@ -69,12 +69,9 @@ public sealed class Settings
     {
         return peekMode switch
         {
-            PeekMode.Minimize => PeekMode.Minimize,
             PeekMode.FlyAway => PeekMode.FlyAway,
             PeekMode.NativeShowDesktop => PeekMode.NativeShowDesktop,
-            (PeekMode)3 => PeekMode.NativeShowDesktop, // legacy Cloak setting
-            PeekMode.VirtualDesktop => PeekMode.NativeShowDesktop, // removed; migrate
-            _ => PeekMode.NativeShowDesktop
+            _ => PeekMode.NativeShowDesktop // migrate Minimize, legacy Cloak, VirtualDesktop, etc.
         };
     }
 

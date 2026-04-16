@@ -1,6 +1,6 @@
 # PeekDesktop 👀
 
-**Click empty desktop wallpaper to reveal your desktop — just like macOS Sonoma.**
+**Click empty desktop wallpaper (or empty taskbar area) to reveal your desktop — just like macOS Sonoma.**
 
 PeekDesktop brings macOS Sonoma's "click wallpaper to reveal desktop" feature to Windows 10 and 11. By default it uses Explorer's native **Show Desktop** behavior, and it also includes optional **Classic Minimize** and **Fly Away** peek styles from the tray menu. Click or drag desktop icons normally without accidentally triggering peek. When you're done, click any window, the taskbar, or the wallpaper again and everything comes right back where it was.
 
@@ -25,7 +25,7 @@ No installer needed. Download the zip, extract it, and run `PeekDesktop.exe`. Re
 
 ## How It Works
 
-1. **Click empty desktop wallpaper** (not an icon) -> your desktop is revealed
+1. **Click empty desktop wallpaper or empty taskbar area** (not an icon or taskbar button) -> your desktop is revealed
 2. **Stay on the desktop** -> click or drag icons, right-click, and rearrange things while windows stay hidden
 3. **Click any app, the taskbar, or empty wallpaper again** -> all windows restore to exactly where they were
 
@@ -33,11 +33,8 @@ That's it. It just works.
 
 ## Peek Styles
 
-PeekDesktop includes three styles you can switch live from the tray icon:
-
-- **Native Show Desktop (Explorer)** — the default and recommended mode
-- **Classic Minimize** — minimizes and restores tracked windows
-- **Fly Away (Experimental)** — animates windows offscreen before restoring them
+- **Show Desktop (Explorer)** — the default and recommended mode. Uses Explorer's native Show Desktop behavior.
+- **Fly Away (Experimental)** — animates windows offscreen. Fun but has known quirks with external window management (Win+D, taskbar). Use for the visual flair, but know it can get confused if the shell changes window state behind its back.
 
 ### Under the Hood
 
@@ -46,7 +43,8 @@ PeekDesktop uses lightweight Windows APIs:
 - **`SetWindowsHookEx(WH_MOUSE_LL)`** — low-level mouse hook to detect desktop clicks
 - **`WindowFromPoint`** — identifies the window under your cursor
 - **MSAA hit-testing (`AccessibleObjectFromPoint`)** — distinguishes empty wallpaper from desktop icons
-- **Win+D `SendInput`** — uses Explorer's native Show Desktop for the default mode
+- **Taskbar Show Desktop button click** — primary path, immune to keyboard remapping (PowerToys, etc.)
+- **Win+D `SendInput`** — fallback if taskbar button is unavailable
 - **`EnumWindows` + `WINDOWPLACEMENT`** — captures exact position and state (including maximized) of every window
 - **`SetWinEventHook(EVENT_SYSTEM_FOREGROUND)`** — watches for when you switch back to an app
 - **`SetWindowPlacement`** — restores windows to their exact previous positions
@@ -61,15 +59,20 @@ Right-click the tray icon for options:
 - 🔁 **Start with Windows** — launch automatically at login
 - 🖱️ **Require Double-Click** — optionally require a double-click on the desktop to trigger peek
 - 🎮 **Pause While Gaming / Full-Screen** — on by default for exclusive full-screen and known gaming fullscreen apps
+- 📌 **Peek on Taskbar Click** — optionally trigger peek from empty taskbar space
 - 👀 **Peek Style** — switch between Explorer, minimize, and fly-away modes
 - ℹ️ **About** — version info
 - ⬇️ **Check for Updates** — see if a newer version is out and open the download page
 - ❌ **Exit** — quit PeekDesktop
 
-## What's New in v0.7.0
+## What's New
 
-- **Smaller Native AOT binary** via `PublishAotCompressed` (x64 test output dropped from ~2.32 MB to ~0.99 MB)
-- **Pause While Gaming / Full-Screen** option (enabled by default) to avoid desktop-peek interference during gaming sessions
+- **~564 KB binary** (x64 with LZMA) — pure Win32 P/Invoke, no WinForms, no HttpClient, no System.Reflection
+- **Peek on Taskbar Click** — optional trigger from empty taskbar space
+- **Taskbar button Show Desktop** — bypasses keyboard remappers (PowerToys Keyboard Manager, etc.)
+- **Pause While Gaming / Full-Screen** — avoids interference during gaming sessions
+- **Require Double-Click** — optional double-click trigger for desktop peek
+- **Auto-update notifications** via GitHub Releases
 
 ## macOS Sonoma vs PeekDesktop
 
@@ -84,7 +87,7 @@ Right-click the tray icon for options:
 | System tray control | ❌ | ✅ |
 | Multi-monitor support | ✅ | ✅ |
 | Start with OS | Login Items | ✅ Registry |
-| Smooth animation | ✅ | Coming soon |
+| Smooth animation | ✅ | Fly Away mode |
 
 ## Build from Source
 
@@ -114,7 +117,7 @@ dotnet publish src/PeekDesktop/PeekDesktop.csproj -c Release -r win-arm64 --self
 
 ### Release packaging
 
-Release builds use **.NET Native AOT** — the exe is a fully native binary with no .NET runtime dependency. The x64 build is further compressed with [PublishAotCompressed](https://github.com/MichalStrehovsky/PublishAotCompressed) (UPX) for a final download under 1 MB.
+Release builds use **.NET Native AOT** — the exe is a fully native binary with no .NET runtime dependency. The x64 build is further compressed with [PublishAotCompressed](https://github.com/MichalStrehovsky/PublishAotCompressed) (LZMA) for a final download under 600 KB.
 
 ## Architecture
 
@@ -125,15 +128,16 @@ src/PeekDesktop/
 ├── MouseHook.cs           # WH_MOUSE_LL global mouse hook
 ├── FocusWatcher.cs        # EVENT_SYSTEM_FOREGROUND monitor
 ├── WindowTracker.cs       # Enumerate, minimize, and restore windows
-├── DesktopDetector.cs     # Identify Progman/WorkerW desktop windows
-├── Win32MessageLoop.cs    # Win32 message loop (replaces WinForms)
+├── DesktopDetector.cs     # Identify desktop windows, icons, taskbar
+├── Win32MessageLoop.cs    # Win32 message loop + TaskbarCreated recovery
 ├── Win32TrayIcon.cs       # Shell_NotifyIcon wrapper
 ├── Win32Menu.cs           # Win32 popup menu wrapper
 ├── Win32Icon.cs           # Programmatic icon via CreateIconIndirect
 ├── WinHttp.cs             # WinHTTP wrapper (replaces HttpClient)
 ├── TrayIcon.cs            # Tray icon business logic + menu wiring
-├── AppUpdater.cs          # GitHub release update checker
-├── Settings.cs            # Hand-written JSON persistence + registry autostart
+├── AppUpdater.cs          # GitHub release update checker (via WinHTTP)
+├── AppDiagnostics.cs      # Logging via Trace/DebugView
+├── Settings.cs            # Hand-written UTF-8 JSON persistence + autostart
 └── NativeMethods.cs       # Win32 P/Invoke declarations
 ```
 
@@ -142,19 +146,19 @@ src/PeekDesktop/
 PRs welcome! Current status and next ideas:
 
 - [x] Click empty wallpaper to peek
+- [x] Click empty taskbar area to peek (opt-in)
 - [x] Restore on app click or taskbar click
 - [x] Restore on a second wallpaper click
 - [x] Clicking or dragging desktop icons does **not** start peek
+- [x] Right-click desktop icons while peeking (context menus stay open)
 - [x] Desktop icons remain usable while peeking
 - [x] Exact window positions are restored
 - [x] GitHub release-based update checks
+- [x] Works with PowerToys Keyboard Manager (keyboard remapping)
 - [ ] Smooth minimize/restore animations (slide/fade)
 - [ ] Hotkey support (e.g., `Ctrl+F12` to toggle peek)
 - [ ] Per-monitor peek (only minimize windows on the clicked monitor)
 - [ ] Exclude specific apps from being minimized
-- [ ] Better icon (the current one is programmatically generated)
-- [ ] Windows 11 widgets area awareness
-- [ ] Sound effect on peek/restore
 
 ## .NET Native AOT — The Size Journey 💾
 
@@ -167,7 +171,7 @@ PeekDesktop is a showcase for how small a .NET Native AOT application can get. S
 | v0.6.0 | 4.2 MB | Dropped WinForms — pure Win32 P/Invoke for tray icon, menus, message loop |
 | v0.6.1 | 2.3 MB | Replaced `HttpClient` with OS-native WinHTTP (`winhttp.dll`) |
 | v0.7.2 | 1.88 MB | Eliminated JSON source generator, `System.Reflection`, `Process.Start` |
-| v0.7.2 + UPX | **~834 KB** | **UPX compression via [PublishAotCompressed](https://github.com/AustinWise/PublishAotCompressed)** |
+| v0.7.2 + LZMA | **~564 KB** | **LZMA compression via [PublishAotCompressed](https://github.com/MichalStrehovsky/PublishAotCompressed)** |
 
 **What's left in the 1.88 MB (pre-compression)?**
 - ~1.2 MB — .NET Native AOT runtime (GC, threading, exception handling, type system)
@@ -181,7 +185,7 @@ PeekDesktop is a showcase for how small a .NET Native AOT application can get. S
 - **No JSON source generator** — hand-written `Utf8JsonReader`/`Utf8JsonWriter` for the two tiny JSON shapes we need
 - **No System.Reflection** — PE version resources read via `GetFileVersionInfoExW` P/Invoke
 - **No managed delegates for WndProc** — `UnmanagedCallersOnly` function pointers avoid marshaling overhead
-- **`OptimizationPreference=Size`** + `IlcFoldIdenticalMethodBodies` + `InvariantGlobalization` + stripped diagnostics
+- **`OptimizationPreference=Size`** + `InvariantGlobalization` + stripped diagnostics
 
 Special thanks to [Michal Strehovský](https://github.com/MichalStrehovsky) — the architect of .NET Native AOT — whose [PR #5](https://github.com/shanselman/PeekDesktop/pull/5) inspired the final round of optimizations that eliminated the JSON source generator, reflection, and managed delegates. When the person who *built* the AOT compiler optimizes your app, you pay attention. 🙏
 

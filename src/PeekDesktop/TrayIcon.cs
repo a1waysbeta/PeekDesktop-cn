@@ -88,9 +88,8 @@ internal sealed class TrayIcon : IDisposable
         menu.AddItem(ID_GAME_GUARD, "Pause While Gaming / Full-Screen", ToggleGameGuard, _settings.PauseWhileFullscreenAppActive);
         menu.AddItem(ID_TASKBAR_CLICK, "Peek on Taskbar Click", ToggleTaskbarClick, _settings.PeekOnTaskbarClick);
         menu.AddSeparator();
-        menu.AddItem(ID_MODE_MINIMIZE, "Classic Minimize", () => SetPeekMode(PeekMode.Minimize), _settings.PeekMode == PeekMode.Minimize);
+        menu.AddItem(ID_MODE_NATIVE, "Show Desktop (Explorer)", () => SetPeekMode(PeekMode.NativeShowDesktop), _settings.PeekMode == PeekMode.NativeShowDesktop);
         menu.AddItem(ID_MODE_FLYAWAY, "Fly Away (Experimental)", () => SetPeekMode(PeekMode.FlyAway), _settings.PeekMode == PeekMode.FlyAway);
-        menu.AddItem(ID_MODE_NATIVE, "Native Show Desktop (Explorer)", () => SetPeekMode(PeekMode.NativeShowDesktop), _settings.PeekMode == PeekMode.NativeShowDesktop);
         menu.AddSeparator();
         menu.AddItem(ID_ABOUT, "About PeekDesktop", ShowAbout);
         menu.AddItem(ID_UPDATES, "Check for Updates", CheckForUpdates);
