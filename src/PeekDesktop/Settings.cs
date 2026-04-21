@@ -23,6 +23,7 @@ public sealed class Settings
     public bool RequireDoubleClick { get; set; } = false;
     public bool PauseWhileFullscreenAppActive { get; set; } = true;
     public bool PeekOnTaskbarClick { get; set; } = false;
+    public bool RestoreHiddenWindowsOnAppOpen { get; set; } = false;
     public PeekMode PeekMode { get; set; } = PeekMode.NativeShowDesktop;
 
     public static Settings Load()
@@ -116,6 +117,11 @@ public sealed class Settings
                 reader.Read();
                 settings.PeekOnTaskbarClick = reader.GetBoolean();
             }
+            else if (reader.ValueTextEquals("RestoreHiddenWindowsOnAppOpen"u8))
+            {
+                reader.Read();
+                settings.RestoreHiddenWindowsOnAppOpen = reader.GetBoolean();
+            }
             else if (reader.ValueTextEquals("PeekMode"u8))
             {
                 reader.Read();
@@ -141,6 +147,7 @@ public sealed class Settings
         writer.WriteBoolean("RequireDoubleClick"u8, RequireDoubleClick);
         writer.WriteBoolean("PauseWhileFullscreenAppActive"u8, PauseWhileFullscreenAppActive);
         writer.WriteBoolean("PeekOnTaskbarClick"u8, PeekOnTaskbarClick);
+        writer.WriteBoolean("RestoreHiddenWindowsOnAppOpen"u8, RestoreHiddenWindowsOnAppOpen);
         writer.WriteNumber("PeekMode"u8, (int)PeekMode);
         writer.WriteEndObject();
 
