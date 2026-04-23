@@ -23,7 +23,7 @@ public sealed class Settings
     public bool RequireDoubleClick { get; set; } = false;
     public bool PauseWhileFullscreenAppActive { get; set; } = true;
     public bool PeekOnTaskbarClick { get; set; } = false;
-    public bool RestoreHiddenWindowsOnAppOpen { get; set; } = false;
+    public bool RestoreHiddenWindowsOnAppOpen { get; set; } = true;
     public PeekMode PeekMode { get; set; } = PeekMode.NativeShowDesktop;
 
     public static Settings Load()

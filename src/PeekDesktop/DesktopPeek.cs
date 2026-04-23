@@ -289,9 +289,9 @@ public sealed class DesktopPeek : IDisposable
             if (_activePeekMode == PeekMode.NativeShowDesktop)
             {
                 AppDiagnostics.Log($"Native toggle context: thread={Environment.CurrentManagedThreadId} apartment={System.Threading.Thread.CurrentThread.GetApartmentState()}");
+                _windowTracker.CaptureWindows();
                 if (NativeMethods.TryToggleDesktop())
                 {
-                    _windowTracker.ClearSavedWindows();
                     _nativeShellToggled = true;
                     _isPeeking = true;
                     _ignoreFocusUntil = Environment.TickCount64 + PostPeekFocusGracePeriodMs;
@@ -348,8 +348,26 @@ public sealed class DesktopPeek : IDisposable
 
             if (_nativeShellToggled)
             {
-                NativeMethods.TryToggleDesktop();
-                _windowTracker.ClearSavedWindows();
+                if (_restoreHiddenWindowsOnAppOpen && _windowTracker.HasWindows)
+                {
+                    AppDiagnostics.Log($"Restoring {_windowTracker.SavedWindowCount} captured window(s) from native peek snapshot");
+                    _windowTracker.RestoreAll(PeekMode.Minimize);
+                }
+                else
+                {
+                    IntPtr foregroundWindow = NativeMethods.GetForegroundWindow();
+                    if (DesktopDetector.IsDesktopWindow(foregroundWindow))
+                    {
+                        AppDiagnostics.Log("Native show desktop still active; sending toggle to restore windows");
+                        NativeMethods.TryToggleDesktop();
+                    }
+                    else
+                    {
+                        AppDiagnostics.LogWindow("Skipping native toggle because shell already left desktop", foregroundWindow);
+                    }
+
+                    _windowTracker.ClearSavedWindows();
+                }
                 _nativeShellToggled = false;
             }
             else
@@ -395,7 +413,15 @@ public sealed class DesktopPeek : IDisposable
             return;
         }
 
-        NativeMethods.ShowWindowAsync(hwnd, NativeMethods.SW_SHOWNORMAL);
+        bool windowNeedsRestore = NativeMethods.IsIconic(hwnd)
+            || !NativeMethods.IsWindowVisible(hwnd)
+            || NativeMethods.IsWindowCloaked(hwnd);
+
+        if (windowNeedsRestore)
+        {
+            NativeMethods.ShowWindowAsync(hwnd, NativeMethods.SW_RESTORE);
+        }
+
         NativeMethods.SetForegroundWindow(hwnd);
     }
 
