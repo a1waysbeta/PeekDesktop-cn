@@ -33,6 +33,7 @@ public sealed class DesktopPeek : IDisposable
     private bool _isTransitioning; // suppresses events during minimize/restore
     private bool _nativeShellToggled;
     private bool _pauseWhileFullscreenAppActive;
+    private bool _restoreHiddenWindowsOnAppOpen;
     private bool _isSuppressedForGaming;
     private long _ignoreFocusUntil;
     private long _ignoreRestoreClickUntil;
@@ -48,6 +49,7 @@ public sealed class DesktopPeek : IDisposable
         PeekMode = NormalizePeekMode(settings.PeekMode);
         _mouseHook.RequireDoubleClick = settings.RequireDoubleClick;
         _pauseWhileFullscreenAppActive = settings.PauseWhileFullscreenAppActive;
+        _restoreHiddenWindowsOnAppOpen = settings.RestoreHiddenWindowsOnAppOpen;
         DesktopDetector.PeekOnTaskbarClick = settings.PeekOnTaskbarClick;
         AppDiagnostics.Log("DesktopPeek created");
         _mouseHook.DesktopClicked += OnDesktopClicked;
@@ -86,6 +88,12 @@ public sealed class DesktopPeek : IDisposable
         }
 
         UpdateGamingSuppressionState(NativeMethods.GetForegroundWindow());
+    }
+
+    public void SetRestoreHiddenWindowsOnAppOpen(bool enabled)
+    {
+        _restoreHiddenWindowsOnAppOpen = enabled;
+        AppDiagnostics.Log($"RestoreHiddenWindowsOnAppOpen set to {enabled}");
     }
 
     public void SetPeekMode(PeekMode peekMode)
@@ -245,12 +253,22 @@ public sealed class DesktopPeek : IDisposable
 
         if (_nativeShellToggled)
         {
-            AppDiagnostics.Log("Foreground moved away from desktop while native show desktop is active; clearing shell-backed peek state");
-            _nativeShellToggled = false;
-            _isPeeking = false;
-            _ignoreFocusUntil = 0;
-            _ignoreRestoreClickUntil = 0;
-            _activePeekMode = PeekMode;
+            if (_restoreHiddenWindowsOnAppOpen)
+            {
+                AppDiagnostics.Log("Foreground moved away from desktop while native show desktop is active; restoring windows behind the new foreground window");
+                RestoreWindows();
+                TryReassertForegroundWindow(e.ForegroundWindow);
+            }
+            else
+            {
+                AppDiagnostics.Log("Foreground moved away from desktop while native show desktop is active; clearing shell-backed peek state");
+                _nativeShellToggled = false;
+                _isPeeking = false;
+                _ignoreFocusUntil = 0;
+                _ignoreRestoreClickUntil = 0;
+                _activePeekMode = PeekMode;
+            }
+
             return;
         }
 
@@ -271,9 +289,9 @@ public sealed class DesktopPeek : IDisposable
             if (_activePeekMode == PeekMode.NativeShowDesktop)
             {
                 AppDiagnostics.Log($"Native toggle context: thread={Environment.CurrentManagedThreadId} apartment={System.Threading.Thread.CurrentThread.GetApartmentState()}");
+                _windowTracker.CaptureWindows();
                 if (NativeMethods.TryToggleDesktop())
                 {
-                    _windowTracker.ClearSavedWindows();
                     _nativeShellToggled = true;
                     _isPeeking = true;
                     _ignoreFocusUntil = Environment.TickCount64 + PostPeekFocusGracePeriodMs;
@@ -330,8 +348,26 @@ public sealed class DesktopPeek : IDisposable
 
             if (_nativeShellToggled)
             {
-                NativeMethods.TryToggleDesktop();
-                _windowTracker.ClearSavedWindows();
+                if (_restoreHiddenWindowsOnAppOpen && _windowTracker.HasWindows)
+                {
+                    AppDiagnostics.Log($"Restoring {_windowTracker.SavedWindowCount} captured window(s) from native peek snapshot");
+                    _windowTracker.RestoreAll(PeekMode.Minimize);
+                }
+                else
+                {
+                    IntPtr foregroundWindow = NativeMethods.GetForegroundWindow();
+                    if (DesktopDetector.IsDesktopWindow(foregroundWindow))
+                    {
+                        AppDiagnostics.Log("Native show desktop still active; sending toggle to restore windows");
+                        NativeMethods.TryToggleDesktop();
+                    }
+                    else
+                    {
+                        AppDiagnostics.LogWindow("Skipping native toggle because shell already left desktop", foregroundWindow);
+                    }
+
+                    _windowTracker.ClearSavedWindows();
+                }
                 _nativeShellToggled = false;
             }
             else
@@ -365,6 +401,28 @@ public sealed class DesktopPeek : IDisposable
 
         _ = NativeMethods.GetWindowThreadProcessId(hwnd, out uint processId);
         return processId == (uint)Environment.ProcessId;
+    }
+
+    private static void TryReassertForegroundWindow(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero
+            || !NativeMethods.IsWindow(hwnd)
+            || DesktopDetector.IsDesktopWindow(hwnd)
+            || IsOwnedByCurrentProcess(hwnd))
+        {
+            return;
+        }
+
+        bool windowNeedsRestore = NativeMethods.IsIconic(hwnd)
+            || !NativeMethods.IsWindowVisible(hwnd)
+            || NativeMethods.IsWindowCloaked(hwnd);
+
+        if (windowNeedsRestore)
+        {
+            NativeMethods.ShowWindowAsync(hwnd, NativeMethods.SW_RESTORE);
+        }
+
+        NativeMethods.SetForegroundWindow(hwnd);
     }
 
     private void UpdateGamingSuppressionState(IntPtr foregroundWindow)

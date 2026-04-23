@@ -16,6 +16,7 @@ internal sealed class TrayIcon : IDisposable
     private const uint ID_DOUBLECLICK = 3;
     private const uint ID_GAME_GUARD = 4;
     private const uint ID_TASKBAR_CLICK = 5;
+    private const uint ID_RESTORE_ON_APP_OPEN = 6;
     private const uint ID_MODE_MINIMIZE = 10;
     private const uint ID_MODE_FLYAWAY = 11;
     private const uint ID_MODE_NATIVE = 12;
@@ -99,6 +100,7 @@ internal sealed class TrayIcon : IDisposable
         menu.AddItem(ID_STARTUP, "Start with Windows", ToggleStartup, _settings.StartWithWindows);
         menu.AddItem(ID_DOUBLECLICK, "Require Double-Click", ToggleDoubleClick, _settings.RequireDoubleClick);
         menu.AddItem(ID_TASKBAR_CLICK, "Peek on Taskbar Click", ToggleTaskbarClick, _settings.PeekOnTaskbarClick);
+        menu.AddItem(ID_RESTORE_ON_APP_OPEN, "Restore All Windows on App Switch", ToggleRestoreOnAppOpen, _settings.RestoreHiddenWindowsOnAppOpen);
         menu.AddItem(ID_GAME_GUARD, "Pause While Gaming / Full-Screen", ToggleGameGuard, _settings.PauseWhileFullscreenAppActive);
         menu.AddSeparator();
         menu.AddItem(ID_MODE_NATIVE, "Show Desktop (Explorer)", () => SetPeekMode(PeekMode.NativeShowDesktop), _settings.PeekMode == PeekMode.NativeShowDesktop);
@@ -150,6 +152,13 @@ internal sealed class TrayIcon : IDisposable
     {
         _settings.PeekOnTaskbarClick = !_settings.PeekOnTaskbarClick;
         _desktopPeek.SetPeekOnTaskbarClick(_settings.PeekOnTaskbarClick);
+        _settings.Save();
+    }
+
+    private void ToggleRestoreOnAppOpen()
+    {
+        _settings.RestoreHiddenWindowsOnAppOpen = !_settings.RestoreHiddenWindowsOnAppOpen;
+        _desktopPeek.SetRestoreHiddenWindowsOnAppOpen(_settings.RestoreHiddenWindowsOnAppOpen);
         _settings.Save();
     }
 

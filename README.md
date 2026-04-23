@@ -61,6 +61,7 @@ Right-click the tray icon for options:
 - 🖱️ **Require Double-Click** — optionally require a double-click on the desktop to trigger peek
 - 🎮 **Pause While Gaming / Full-Screen** — on by default for exclusive full-screen and known gaming fullscreen apps
 - 📌 **Peek on Taskbar Click** — optionally trigger peek from empty taskbar space
+- 🪟 **Restore All Windows on App Switch** — on by default; in Explorer show desktop mode, taskbar/Alt+Tab app switches restore all hidden windows behind the selected app
 - 👀 **Peek Style** — switch between Explorer and fly-away modes
 - ℹ️ **About** — version info
 - ⬇️ **Check for Updates** — see if a newer version is out and open the download page
