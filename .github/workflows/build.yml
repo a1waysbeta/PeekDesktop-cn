@@ -149,14 +149,14 @@ jobs:
           }
         }
 
-    - name: Signing skipped
-      if: env.HAS_AZURE_SIGNING != 'true' && env.ALLOW_UNSIGNED == 'true'
-      shell: pwsh
-      run: |
-        if ('${{ github.ref_type }}' -eq 'tag') {
-          throw "Unsigned builds are not allowed for tagged releases. Configure Azure Trusted Signing secrets first."
-        }
-        Write-Host "Trusted Signing is not configured for this repo yet; continuing only because this is not a tagged release."
+    # - name: Signing skipped
+    #   if: env.HAS_AZURE_SIGNING != 'true' && env.ALLOW_UNSIGNED == 'true'
+    #   shell: pwsh
+    #   run: |
+    #     if ('${{ github.ref_type }}' -eq 'tag') {
+    #       throw "Unsigned builds are not allowed for tagged releases. Configure Azure Trusted Signing secrets first."
+    #     }
+    #     Write-Host "Trusted Signing is not configured for this repo yet; continuing only because this is not a tagged release."
 
     - name: Prepare artifacts
       shell: pwsh
