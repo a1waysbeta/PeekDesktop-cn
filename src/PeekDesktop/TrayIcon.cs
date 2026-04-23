@@ -47,8 +47,8 @@ internal sealed class TrayIcon : IDisposable
         _appUpdater.UpdateAvailable += (_, e) =>
         {
             _trayIcon.ShowBalloon(
-                "PeekDesktop Update Available",
-                $"Version {e.Version} is available. Click here to open the download page.");
+                "PeekDesktop 有更新可用",
+                $"发现新版本 {e.Version}，点击此处打开下载页面");
         };
     }
 
@@ -61,7 +61,7 @@ internal sealed class TrayIcon : IDisposable
     private void TryAddTrayIcon(bool scheduleRetryOnFailure)
     {
         IntPtr hIcon = Win32Icon.CreateTrayIcon();
-        if (_trayIcon.Add(hIcon, "PeekDesktop \u2014 click desktop to peek"))
+        if (_trayIcon.Add(hIcon, "PeekDesktop \u2014 点击桌面，显示桌面"))
             return;
 
         if (!scheduleRetryOnFailure)
@@ -95,19 +95,19 @@ internal sealed class TrayIcon : IDisposable
     {
         using var menu = new Win32Menu();
 
-        menu.AddItem(ID_ENABLED, "Enabled", ToggleEnabled, _settings.Enabled);
-        menu.AddItem(ID_STARTUP, "Start with Windows", ToggleStartup, _settings.StartWithWindows);
-        menu.AddItem(ID_DOUBLECLICK, "Require Double-Click", ToggleDoubleClick, _settings.RequireDoubleClick);
-        menu.AddItem(ID_TASKBAR_CLICK, "Peek on Taskbar Click", ToggleTaskbarClick, _settings.PeekOnTaskbarClick);
-        menu.AddItem(ID_GAME_GUARD, "Pause While Gaming / Full-Screen", ToggleGameGuard, _settings.PauseWhileFullscreenAppActive);
+        menu.AddItem(ID_ENABLED, "启用", ToggleEnabled, _settings.Enabled);
+        menu.AddItem(ID_STARTUP, "开机启动", ToggleStartup, _settings.StartWithWindows);
+        menu.AddItem(ID_DOUBLECLICK, "需要双击", ToggleDoubleClick, _settings.RequireDoubleClick);
+        menu.AddItem(ID_TASKBAR_CLICK, "点击任务栏触发显示桌面", ToggleTaskbarClick, _settings.PeekOnTaskbarClick);
+        menu.AddItem(ID_GAME_GUARD, "游戏/全屏时暂停", ToggleGameGuard, _settings.PauseWhileFullscreenAppActive);
         menu.AddSeparator();
-        menu.AddItem(ID_MODE_NATIVE, "Show Desktop (Explorer)", () => SetPeekMode(PeekMode.NativeShowDesktop), _settings.PeekMode == PeekMode.NativeShowDesktop);
-        menu.AddItem(ID_MODE_FLYAWAY, "Fly Away (Experimental)", () => SetPeekMode(PeekMode.FlyAway), _settings.PeekMode == PeekMode.FlyAway);
+        menu.AddItem(ID_MODE_NATIVE, "显示桌面（资源管理器）", () => SetPeekMode(PeekMode.NativeShowDesktop), _settings.PeekMode == PeekMode.NativeShowDesktop);
+        menu.AddItem(ID_MODE_FLYAWAY, "飞离效果（实验性）", () => SetPeekMode(PeekMode.FlyAway), _settings.PeekMode == PeekMode.FlyAway);
         menu.AddSeparator();
-        menu.AddItem(ID_ABOUT, "About PeekDesktop", ShowAbout);
-        menu.AddItem(ID_UPDATES, "Check for Updates", CheckForUpdates);
+        menu.AddItem(ID_ABOUT, "关于 PeekDesktop", ShowAbout);
+        menu.AddItem(ID_UPDATES, "检查更新", CheckForUpdates);
         menu.AddSeparator();
-        menu.AddItem(ID_EXIT, "Exit", DoExit);
+        menu.AddItem(ID_EXIT, "退出", DoExit);
 
         menu.Show(_messageLoop.Handle);
     }
@@ -167,14 +167,14 @@ internal sealed class TrayIcon : IDisposable
         NativeMethods.MessageBoxW(
             IntPtr.Zero,
             $"PeekDesktop v{version}\n\n" +
-            "Click your desktop wallpaper to peek at your desktop,\n" +
-            "just like macOS Sonoma.\n\n" +
-            "Click any window or the taskbar to restore.\n" +
-            "Peek Style lets you switch between Explorer show desktop\n" +
-            "and fly-away mode.\n\n" +
-            "Updates come from GitHub Releases.\n\n" +
+            "点击桌面壁纸即可显示桌面，\n" +
+            "就像 macOS Sonoma 一样。\n\n" +
+            "点击桌面或任务栏任意空白区域即可恢复。\n" +
+            "“显示桌面”效果让你可以在资源管理器模式\n" +
+            "与飞离模式之间切换。\n\n" +
+            "更新来自 GitHub 发布页。\n\n" +
             "github.com/shanselman/PeekDesktop",
-            "About PeekDesktop",
+            "关于 PeekDesktop",
             NativeMethods.MB_OK | NativeMethods.MB_ICONINFORMATION);
     }
 
@@ -195,7 +195,7 @@ internal sealed class TrayIcon : IDisposable
         string? version = productVersion ?? fileVersion?.ToString();
 
         if (string.IsNullOrWhiteSpace(version))
-            return "unknown";
+            return "未知";
 
         int plusIndex = version.IndexOf('+');
         version = plusIndex >= 0 ? version[..plusIndex] : version;
@@ -215,10 +215,10 @@ internal sealed class TrayIcon : IDisposable
     {
         return peekMode switch
         {
-            PeekMode.Minimize => "Classic Minimize",
-            PeekMode.FlyAway => "Fly Away",
-            PeekMode.NativeShowDesktop => "Native Show Desktop",
-            _ => "Peek"
+            PeekMode.Minimize => "经典最小化",
+            PeekMode.FlyAway => "飞离效果",
+            PeekMode.NativeShowDesktop => "原生显示桌面",
+            _ => "显示桌面"
         };
     }
 

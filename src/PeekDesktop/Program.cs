@@ -116,7 +116,7 @@ public static class Program
         NativeMethods.MessageBoxW(
             IntPtr.Zero,
             $"{context}\n\n{ex.Message}",
-            "PeekDesktop failed to start",
+            "PeekDesktop 启动失败",
             NativeMethods.MB_OK | NativeMethods.MB_ICONERROR);
     }
 }
