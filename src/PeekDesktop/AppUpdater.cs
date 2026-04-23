@@ -8,8 +8,8 @@ namespace PeekDesktop;
 
 internal sealed class AppUpdater
 {
-    private const string LatestReleaseApiUrl = "https://api.github.com/repos/shanselman/PeekDesktop/releases/latest";
-    private const string ReleasesPageUrl = "https://github.com/shanselman/PeekDesktop/releases/latest";
+    private const string LatestReleaseApiUrl = "https://api.github.com/repos/a1waysbeta/PeekDesktop-cn/releases/latest";
+    private const string ReleasesPageUrl = "https://github.com/a1waysbeta/PeekDesktop-cn/releases/latest";
 
     private readonly Win32MessageLoop? _messageLoop;
     private bool _isChecking;
@@ -106,7 +106,7 @@ internal sealed class AppUpdater
     {
         string url = _latestReleaseUrl ?? ReleasesPageUrl;
 
-        // Validate URL before launching — only allow https://github.com/shanselman/PeekDesktop/
+        // Validate URL before launching — only allow https://github.com/a1waysbeta/PeekDesktop-cn/
         if (!IsValidReleaseUrl(url))
         {
             AppDiagnostics.Log($"Update URL failed validation, using hardcoded fallback: {url}");
@@ -121,7 +121,7 @@ internal sealed class AppUpdater
         return Uri.TryCreate(url, UriKind.Absolute, out Uri? uri)
             && uri.Scheme == "https"
             && uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase)
-            && uri.AbsolutePath.StartsWith("/shanselman/PeekDesktop/", StringComparison.OrdinalIgnoreCase);
+            && uri.AbsolutePath.StartsWith("/a1waysbeta/PeekDesktop-cn/", StringComparison.OrdinalIgnoreCase);
     }
 
     private void RaiseUpdateAvailable(string version, string releaseUrl)

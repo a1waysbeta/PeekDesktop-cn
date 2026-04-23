@@ -170,10 +170,12 @@ internal sealed class TrayIcon : IDisposable
             "点击桌面壁纸即可显示桌面，\n" +
             "就像 macOS Sonoma 一样。\n\n" +
             "点击桌面或任务栏任意空白区域即可恢复。\n" +
-            "“显示桌面”效果让你可以在资源管理器模式\n" +
+            "“显示桌面”动画效果让你可以在资源管理器模式\n" +
             "与飞离模式之间切换。\n\n" +
             "更新来自 GitHub 发布页。\n\n" +
-            "github.com/shanselman/PeekDesktop",
+            "中文版：github.com/a1waysbeta/PeekDesktop-cn\n" +
+            "英文版：github.com/shanselman/PeekDesktop\n\n" +
+            "汉化：alwaysbeta",
             "关于 PeekDesktop",
             NativeMethods.MB_OK | NativeMethods.MB_ICONINFORMATION);
     }
