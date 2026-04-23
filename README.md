@@ -1,40 +1,38 @@
 # PeekDesktop 👀
 
-**Click empty desktop wallpaper (or empty taskbar area) to reveal your desktop — just like macOS Sonoma.**
+**点击桌面空白壁纸（或任务栏空白区域）即可显示桌面 —— 就像 macOS Sonoma 一样。**
 
-PeekDesktop brings macOS Sonoma's "click wallpaper to reveal desktop" feature to Windows 10 and 11. By default it uses Explorer's native **Show Desktop** behavior, and it also includes an optional **Fly Away** experimental style plus tray toggles for **Require Double-Click** and **Peek on Taskbar Click**. Click or drag desktop icons normally without accidentally triggering peek. When you're done, click any window, the taskbar, or the wallpaper again and everything comes right back where it was.
+PeekDesktop 将 macOS Sonoma 的「点击壁纸显示桌面」功能带到 Windows 10 和 11。默认情况下，它使用资源管理器的原生「显示桌面」行为，同时还包含可选的「飞离」实验性效果，以及托盘菜单中的「需要双击」和「点击任务栏触发显示桌面」开关。你可以正常点击或拖拽桌面图标，不会意外触发显示桌面。显示桌面后，再次点击任务栏空白区域或桌面壁纸，所有窗口就会恢复到原来的位置。
 
 <p align="center">
   <img src="img/demo.gif" alt="PeekDesktop demo showing windows minimizing when you click the wallpaper" width="900" />
 </p>
 
-## Download
+## 下载
 
-📥 **[Download the latest release](https://github.com/shanselman/PeekDesktop/releases/latest)**
+📥 **[下载最新版本](https://github.com/a1waysbeta/PeekDesktop-cn/releases/latest)**
 
-| File | Platform |
+| 文件 | 适用平台 |
 |------|----------|
-| `PeekDesktop-vX.Y-win-x64.zip` | Intel/AMD (most PCs) |
-| `PeekDesktop-vX.Y-win-arm64.zip` | ARM64 (Surface Pro X, Snapdragon, etc.) |
+| `PeekDesktop-vX.Y-win-x64.zip` | Intel/AMD（大多数电脑） |
+| `PeekDesktop-vX.Y-win-arm64.zip` | ARM64（Surface Pro X、Snapdragon 等） |
 
-No installer needed. Download the zip, extract it, and run `PeekDesktop.exe`. Release builds are **self-contained**, so you do not need to install .NET separately. It lives in your system tray and can notify you when a newer GitHub Release is available.
+无需安装程序。下载 zip 压缩包，解压后运行 `PeekDesktop.exe` 即可。发布版本为**自包含**单文件，无需额外安装 .NET。程序会驻留在系统托盘中，并在 GitHub 有新版本时通知你。
 
-## Documentation
+## 文档
 
-- **[Engineering Deep Dive](Docs/PeekDesktop-Engineering-Deep-Dive.md)** - architecture, shell internals, experiments, debugging workflow, undocumented API notes, and release tradeoffs
+- **[工程深度解析](Docs/PeekDesktop-Engineering-Deep-Dive.md)** —— 架构、Shell 内部机制、实验、调试流程、未公开 API 说明及发布权衡
 
-## How It Works
+## 工作原理
 
-1. **Click empty desktop wallpaper or empty taskbar area** (not an icon or taskbar button) -> your desktop is revealed
-2. **Stay on the desktop** -> click or drag icons, right-click, and rearrange things while windows stay hidden
-3. **Click any app, the taskbar, or empty wallpaper again** -> all windows restore to exactly where they were
+1. **点击桌面空白壁纸或任务栏空白区域**（不是图标或任务栏按钮）-> 显示桌面
+2. **停留在桌面上** -> 可以点击或拖拽图标、右键菜单、整理文件，窗口保持隐藏
+3. **再次点击任务栏或空白壁纸** -> 所有窗口恢复到原来的位置
 
-That's it. It just works.
+## 显示桌面动画效果
 
-## Peek Styles
-
-- **Show Desktop (Explorer)** — the default and recommended mode. Uses Explorer's native Show Desktop behavior.
-- **Fly Away (Experimental)** — animates windows offscreen. Fun but has known quirks with external window management (Win+D, taskbar). Use for the visual flair, but know it can get confused if the shell changes window state behind its back.
+- **显示桌面（资源管理器）** — 默认且推荐模式。使用资源管理器的原生显示桌面行为。
+- **飞离（实验性）** — 窗口飞出屏幕的动画效果。有趣但存在与外部窗口管理（Win+D、任务栏）的已知问题。追求视觉效果可使用，但要知道当 Shell 在背后改变窗口状态时可能会出现混乱。
 
 ### Under the Hood
 
