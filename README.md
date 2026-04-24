@@ -17,11 +17,12 @@ PeekDesktop brings macOS Sonoma's "click wallpaper to reveal desktop" feature to
 | `PeekDesktop-vX.Y-win-x64.zip` | Intel/AMD (most PCs) |
 | `PeekDesktop-vX.Y-win-arm64.zip` | ARM64 (Surface Pro X, Snapdragon, etc.) |
 
-No installer needed. Download the zip, extract it, and run `PeekDesktop.exe`. Release builds are **self-contained**, so you do not need to install .NET separately. It lives in your system tray and can notify you when a newer GitHub Release is available.
+No installer needed. Download the zip, extract it, and run `PeekDesktop.exe`. Release builds are **self-contained**, so you do not need to install .NET separately. It lives in your system tray and **updates itself automatically** — when a new version is available, it downloads, verifies the code signature, and restarts in place.
 
 ## Documentation
 
 - **[Engineering Deep Dive](Docs/PeekDesktop-Engineering-Deep-Dive.md)** - architecture, shell internals, experiments, debugging workflow, undocumented API notes, and release tradeoffs
+- **[Auto-Updater](Docs/Auto-Updater.md)** - how the in-place auto-update system works, security model, swap dance, testing
 
 ## How It Works
 
@@ -64,7 +65,8 @@ Right-click the tray icon for options:
 - 🪟 **Restore All Windows on App Switch** — on by default; in Explorer show desktop mode, taskbar/Alt+Tab app switches restore all hidden windows behind the selected app
 - 👀 **Peek Style** — switch between Explorer and fly-away modes
 - ℹ️ **About** — version info
-- ⬇️ **Check for Updates** — see if a newer version is out and open the download page
+- ⬇️ **Check for Updates** — download and install newer versions automatically
+- 🔄 **Auto-Check for Updates** — on by default; silently checks for updates on startup
 - ❌ **Exit** — quit PeekDesktop
 
 When Windows is in dark mode, the tray menu also follows the system theme when supported by the OS.
@@ -77,7 +79,7 @@ When Windows is in dark mode, the tray menu also follows the system theme when s
 - **Taskbar button Show Desktop** — bypasses keyboard remappers (PowerToys Keyboard Manager, etc.)
 - **Pause While Gaming / Full-Screen** — avoids interference during gaming sessions
 - **Require Double-Click** — optional double-click trigger for desktop peek
-- **Auto-update notifications** via GitHub Releases
+- **In-place auto-updater** — downloads, verifies Authenticode signature, swaps, and restarts automatically
 
 ## macOS Sonoma vs PeekDesktop
 
@@ -149,7 +151,7 @@ src/PeekDesktop/
 ├── Win32Icon.cs           # Programmatic icon via CreateIconIndirect
 ├── WinHttp.cs             # WinHTTP wrapper (replaces HttpClient)
 ├── TrayIcon.cs            # Tray icon business logic + menu wiring
-├── AppUpdater.cs          # GitHub release update checker (via WinHTTP)
+├── AppUpdater.cs          # In-place auto-updater (download, verify, swap, restart)
 ├── AppDiagnostics.cs      # Logging via Trace/DebugView
 ├── Settings.cs            # Hand-written UTF-8 JSON persistence + autostart
 └── NativeMethods.cs       # Win32 P/Invoke declarations
