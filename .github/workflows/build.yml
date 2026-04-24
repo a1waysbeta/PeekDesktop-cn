@@ -47,6 +47,9 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore src/PeekDesktop/PeekDesktop.csproj
 
+    - name: Run interop safety harness
+      run: dotnet run --project src/PeekDesktop.InteropHarness/PeekDesktop.InteropHarness.csproj -- 10000
+
     - name: Set version environment variables
       shell: pwsh
       env:

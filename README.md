@@ -108,6 +108,9 @@ dotnet build src/PeekDesktop/PeekDesktop.csproj
 
 ```bash
 dotnet run --project src/PeekDesktop/PeekDesktop.csproj
+
+# Run the P/Invoke safety harness (invalid handles + stress/leak checks)
+dotnet run --project src/PeekDesktop.InteropHarness/PeekDesktop.InteropHarness.csproj -- 10000
 ```
 
 ### Publish a self-contained single-file exe
