@@ -28,6 +28,7 @@ public sealed class DesktopPeek : IDisposable
     private readonly MouseHook _mouseHook = new();
     private readonly FocusWatcher _focusWatcher = new();
     private readonly WindowTracker _windowTracker = new();
+    private readonly List<IntPtr> _deferredTeamsRestoreHandles = new();
 
     private bool _isPeeking;
     private bool _isTransitioning; // suppresses events during minimize/restore
@@ -235,6 +236,12 @@ public sealed class DesktopPeek : IDisposable
             return;
         }
 
+        if (IsTransientAppSwitcherWindow(e.ForegroundWindow))
+        {
+            AppDiagnostics.LogWindow("Foreground is transient app switcher UI; staying in peek mode", e.ForegroundWindow);
+            return;
+        }
+
         // Ignore our own tray/message windows so shell-backed modes don't
         // immediately unwind due to internal focus churn.
         if (IsOwnedByCurrentProcess(e.ForegroundWindow))
@@ -253,6 +260,12 @@ public sealed class DesktopPeek : IDisposable
 
         if (_nativeShellToggled)
         {
+            if (_restoreHiddenWindowsOnAppOpen && ShouldIgnoreTransientTeamsForeground(e.ForegroundWindow))
+            {
+                AppDiagnostics.LogWindow("Ignoring transient Teams pinned foreground steal during native peek", e.ForegroundWindow);
+                return;
+            }
+
             if (_restoreHiddenWindowsOnAppOpen)
             {
                 AppDiagnostics.Log("Foreground moved away from desktop while native show desktop is active; restoring windows behind the new foreground window");
@@ -290,6 +303,13 @@ public sealed class DesktopPeek : IDisposable
             {
                 AppDiagnostics.Log($"Native toggle context: thread={Environment.CurrentManagedThreadId} apartment={System.Threading.Thread.CurrentThread.GetApartmentState()}");
                 _windowTracker.CaptureWindows();
+                _deferredTeamsRestoreHandles.Clear();
+                IntPtr[] excludedTeamsOverlays = _windowTracker.RemoveSavedWindows(ShouldExcludeTeamsOverlayFromNativeSnapshot);
+                if (excludedTeamsOverlays.Length > 0)
+                {
+                    _deferredTeamsRestoreHandles.AddRange(excludedTeamsOverlays);
+                    AppDiagnostics.Log($"Excluded {_deferredTeamsRestoreHandles.Count} Teams overlay window(s) from native restore snapshot");
+                }
                 if (NativeMethods.TryToggleDesktop())
                 {
                     _nativeShellToggled = true;
@@ -352,6 +372,7 @@ public sealed class DesktopPeek : IDisposable
                 {
                     AppDiagnostics.Log($"Restoring {_windowTracker.SavedWindowCount} captured window(s) from native peek snapshot");
                     _windowTracker.RestoreAll(PeekMode.Minimize);
+                    RestoreDeferredTeamsOverlays();
                 }
                 else
                 {
@@ -368,6 +389,8 @@ public sealed class DesktopPeek : IDisposable
 
                     _windowTracker.ClearSavedWindows();
                 }
+
+                _deferredTeamsRestoreHandles.Clear();
                 _nativeShellToggled = false;
             }
             else
@@ -504,5 +527,86 @@ public sealed class DesktopPeek : IDisposable
             return false;
 
         return NativeMethods.TryGetProcessName(processId, out processName);
+    }
+
+    private static bool ShouldIgnoreTransientTeamsForeground(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero || !NativeMethods.IsWindow(hwnd))
+            return false;
+
+        string className = NativeMethods.GetWindowClassName(hwnd);
+        if (!string.Equals(className, "TeamsWebView", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        string title = NativeMethods.GetWindowTitle(hwnd);
+        if (!string.IsNullOrWhiteSpace(title))
+            return false;
+
+        if (!TryGetForegroundProcessName(hwnd, out string processName))
+            return false;
+
+        return string.Equals(processName, "ms-teams", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsTransientAppSwitcherWindow(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero || !NativeMethods.IsWindow(hwnd))
+            return false;
+
+        string className = NativeMethods.GetWindowClassName(hwnd);
+        string title = NativeMethods.GetWindowTitle(hwnd);
+
+        if (string.Equals(className, "XamlExplorerHostIslandWindow", StringComparison.OrdinalIgnoreCase)
+            && title.Contains("Task Switching", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return string.Equals(className, "MultitaskingViewFrame", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(className, "TaskSwitcherWnd", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool ShouldExcludeTeamsOverlayFromNativeSnapshot(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero || !NativeMethods.IsWindow(hwnd))
+            return false;
+
+        string className = NativeMethods.GetWindowClassName(hwnd);
+        if (!string.Equals(className, "TeamsWebView", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (!TryGetForegroundProcessName(hwnd, out string processName)
+            || !string.Equals(processName, "ms-teams", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        string title = NativeMethods.GetWindowTitle(hwnd);
+        if (string.IsNullOrWhiteSpace(title))
+            return true;
+
+        return title.Contains("Pinned window", StringComparison.OrdinalIgnoreCase)
+            || title.Contains("Sharing control bar", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void RestoreDeferredTeamsOverlays()
+    {
+        if (_deferredTeamsRestoreHandles.Count == 0)
+            return;
+
+        int restoredCount = 0;
+        foreach (IntPtr hwnd in _deferredTeamsRestoreHandles)
+        {
+            if (hwnd == IntPtr.Zero || !NativeMethods.IsWindow(hwnd))
+                continue;
+
+            NativeMethods.ShowWindowAsync(hwnd, NativeMethods.SW_RESTORE);
+            restoredCount++;
+        }
+
+        if (restoredCount > 0)
+        {
+            AppDiagnostics.Log($"Restored {restoredCount} deferred Teams overlay window(s)");
+        }
     }
 }

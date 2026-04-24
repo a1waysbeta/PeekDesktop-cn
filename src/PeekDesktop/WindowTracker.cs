@@ -80,6 +80,21 @@ public sealed class WindowTracker
         return handles;
     }
 
+    public IntPtr[] RemoveSavedWindows(Predicate<IntPtr> shouldRemove)
+    {
+        var removedHandles = new List<IntPtr>();
+        _savedWindows.RemoveAll(window =>
+        {
+            if (!shouldRemove(window.Handle))
+                return false;
+
+            removedHandles.Add(window.Handle);
+            return true;
+        });
+
+        return removedHandles.ToArray();
+    }
+
     /// <summary>
     /// Move captured windows toward the corner of the screen they are already closest to.
     /// This is an experiment to mimic macOS-style "show desktop" animation.
