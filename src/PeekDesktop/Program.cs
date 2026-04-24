@@ -16,9 +16,6 @@ public static class Program
         bool isRestarting = args.Length > 0
             && args[0].Equals("--restarting", StringComparison.OrdinalIgnoreCase);
 
-        // Startup cleanup: remove leftover files from a previous update
-        AppUpdater.CleanupPreviousUpdate();
-
         // Acquire single-instance mutex. If restarting after an update,
         // retry for a few seconds while the old process exits.
         _mutex = new Mutex(true, @"Local\PeekDesktop_SingleInstance", out bool isNewInstance);
@@ -46,6 +43,9 @@ public static class Program
                 return;
             }
         }
+
+        // Cleanup after mutex so we don't race with an in-flight update
+        AppUpdater.CleanupPreviousUpdate();
 
         try
         {
@@ -80,8 +80,11 @@ public static class Program
         }
         finally
         {
-            _mutex.ReleaseMutex();
-            _mutex.Dispose();
+            if (_mutex is not null)
+            {
+                try { _mutex.ReleaseMutex(); } catch { }
+                _mutex.Dispose();
+            }
         }
     }
 

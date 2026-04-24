@@ -78,13 +78,13 @@ internal static class WinHttp
             while (true)
             {
                 if (!WinHttpQueryDataAvailable(hRequest, out uint bytesAvailable))
-                    break;
+                    throw new InvalidOperationException($"WinHttpQueryDataAvailable failed: {Marshal.GetLastWin32Error()}");
                 if (bytesAvailable == 0)
                     break;
 
                 uint toRead = Math.Min(bytesAvailable, (uint)buffer.Length);
                 if (!WinHttpReadData(hRequest, buffer, toRead, out uint bytesRead))
-                    break;
+                    throw new InvalidOperationException($"WinHttpReadData failed: {Marshal.GetLastWin32Error()}");
                 if (bytesRead == 0)
                     break;
 

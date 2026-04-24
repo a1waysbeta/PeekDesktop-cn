@@ -16,8 +16,8 @@ internal sealed class AppUpdater
     private const string ReleasesPageUrl = "https://github.com/shanselman/PeekDesktop/releases/latest";
 
     private readonly Win32MessageLoop? _messageLoop;
-    private bool _isChecking;
-    private bool _isUpdating;
+    private int _isChecking;
+    private int _isUpdating;
     private string? _latestReleaseUrl;
     private GitHubReleaseInfo? _latestRelease;
 
@@ -25,8 +25,14 @@ internal sealed class AppUpdater
 
     /// <summary>
     /// Set by Program.cs so the updater can release the single-instance mutex before relaunching.
+    /// Must be called on the UI thread (the thread that owns the mutex).
     /// </summary>
     public static Action? ReleaseMutex { get; set; }
+
+    /// <summary>
+    /// Set by TrayIcon so the updater can remove the tray icon before exiting.
+    /// </summary>
+    public static Action? RemoveTrayIcon { get; set; }
 
     public AppUpdater(Win32MessageLoop? messageLoop = null)
     {
@@ -35,7 +41,7 @@ internal sealed class AppUpdater
 
     public async Task CheckForUpdatesAsync(bool interactive)
     {
-        if (_isChecking)
+        if (Interlocked.CompareExchange(ref _isChecking, 1, 0) != 0)
         {
             if (interactive)
             {
@@ -48,8 +54,6 @@ internal sealed class AppUpdater
 
             return;
         }
-
-        _isChecking = true;
 
         try
         {
@@ -104,7 +108,7 @@ internal sealed class AppUpdater
         }
         finally
         {
-            _isChecking = false;
+            Interlocked.Exchange(ref _isChecking, 0);
         }
     }
 
@@ -114,7 +118,7 @@ internal sealed class AppUpdater
     /// </summary>
     public void PromptAndInstall(string? latestVersion = null)
     {
-        if (_isUpdating)
+        if (Interlocked.CompareExchange(ref _isUpdating, 1, 0) != 0)
             return;
 
         latestVersion ??= _latestRelease is not null ? NormalizeVersion(_latestRelease.TagName) : "new version";
@@ -126,7 +130,10 @@ internal sealed class AppUpdater
             NativeMethods.MB_YESNO | NativeMethods.MB_ICONINFORMATION);
 
         if (result != NativeMethods.IDYES)
+        {
+            Interlocked.Exchange(ref _isUpdating, 0);
             return;
+        }
 
         _ = DownloadAndInstallAsync();
     }
@@ -149,11 +156,6 @@ internal sealed class AppUpdater
     /// </summary>
     private async Task DownloadAndInstallAsync()
     {
-        if (_isUpdating)
-            return;
-
-        _isUpdating = true;
-
         try
         {
             if (_latestRelease is null)
@@ -187,15 +189,16 @@ internal sealed class AppUpdater
                 ExtractExeFromZip(tempZipPath, newExePath);
                 AppDiagnostics.Log($"Extracted new exe to: {newExePath}");
 
-                // Step 3: Verify Authenticode signature on the new exe
-                if (!NativeMethods.VerifyAuthenticodeSignature(newExePath))
+                // Step 3: Verify Authenticode signature and signer identity
+                var (isValid, signerName) = NativeMethods.VerifyAuthenticodeSignature(newExePath);
+                AppDiagnostics.Log($"Authenticode check: valid={isValid}, signer='{signerName ?? "(none)"}'");
+                if (!isValid)
                 {
-                    AppDiagnostics.Log("Authenticode verification FAILED on downloaded exe");
                     throw new InvalidOperationException(
-                        "The downloaded update does not have a valid code signature. " +
+                        $"The downloaded update does not have a valid code signature " +
+                        $"(signer: {signerName ?? "unknown"}). " +
                         "The update has been cancelled for your safety.");
                 }
-                AppDiagnostics.Log("Authenticode signature verified successfully");
 
                 // Step 4: Preflight — verify we can write to the exe directory
                 if (!CanWriteToDirectory(exeDir))
@@ -205,24 +208,19 @@ internal sealed class AppUpdater
                         "Move PeekDesktop to a user-writable folder, or download the update manually.");
                 }
 
-                // Step 4: Rename dance — swap the exe in place
-
-                // Rename running exe → .old (Windows allows renaming a running exe)
-                File.Move(exePath, oldExePath);
+                // Step 5: Rename dance — swap the exe in place
+                File.Move(exePath, oldExePath, overwrite: true);
                 AppDiagnostics.Log("Renamed current exe to .old");
 
-                // Rename .new → PeekDesktop.exe
                 File.Move(newExePath, exePath);
                 AppDiagnostics.Log("Renamed new exe into place");
 
-                // Step 5: Clean up temp zip
+                // Step 6: Clean up temp zip
                 try { File.Delete(tempZipPath); }
                 catch { /* best effort */ }
 
-                // Step 6: Relaunch
+                // Step 7: Relaunch — launch FIRST, then release mutex and exit
                 AppDiagnostics.Log("Update complete — relaunching PeekDesktop");
-
-                ReleaseMutex?.Invoke();
 
                 if (!NativeMethods.LaunchProcess(exePath, "--restarting"))
                 {
@@ -235,7 +233,9 @@ internal sealed class AppUpdater
                     return;
                 }
 
-                // Exit the old process
+                // New process is launched — clean up and exit
+                RemoveTrayIcon?.Invoke();
+                ReleaseMutex?.Invoke();
                 Environment.Exit(0);
             }
             catch
@@ -275,7 +275,7 @@ internal sealed class AppUpdater
         }
         finally
         {
-            _isUpdating = false;
+            Interlocked.Exchange(ref _isUpdating, 0);
         }
     }
 

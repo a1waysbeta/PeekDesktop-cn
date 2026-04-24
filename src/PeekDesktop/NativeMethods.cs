@@ -767,10 +767,17 @@ internal static class NativeMethods
         new(0xaac56b, 0xcd44, 0x11d0, 0x8c, 0xc2, 0x00, 0xc0, 0x4f, 0xc2, 0x95, 0xee);
 
     private const uint WTD_UI_NONE = 2;
-    private const uint WTD_REVOKE_NONE = 0;
+    private const uint WTD_REVOKE_WHOLECHAIN = 1;
     private const uint WTD_CHOICE_FILE = 1;
     private const uint WTD_STATEACTION_VERIFY = 1;
+    private const uint WTD_STATEACTION_CLOSE = 2;
     private const uint WTD_SAFER_FLAG = 0x100;
+    private const uint CERT_NAME_SIMPLE_DISPLAY_TYPE = 4;
+
+    // Expected signer identity substring (case-insensitive).
+    // Update if the Azure Trusted Signing certificate changes.
+    // Inspect with: signtool verify /pa /v PeekDesktop.exe
+    private const string ExpectedSignerSubstring = "Hanselman";
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct WINTRUST_FILE_INFO
@@ -802,11 +809,25 @@ internal static class NativeMethods
     [DllImport("wintrust.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern int WinVerifyTrust(IntPtr hWnd, ref Guid pgActionID, ref WINTRUST_DATA pWVTData);
 
+    [DllImport("wintrust.dll")]
+    private static extern IntPtr WTHelperProvDataFromStateData(IntPtr hStateData);
+
+    [DllImport("wintrust.dll")]
+    private static extern IntPtr WTHelperGetProvSignerFromChain(
+        IntPtr pProvData, uint idxSigner,
+        [MarshalAs(UnmanagedType.Bool)] bool fCounterSigner, uint idxCounterSigner);
+
+    [DllImport("crypt32.dll", CharSet = CharSet.Unicode)]
+    private static extern uint CertGetNameStringW(
+        IntPtr pCertContext, uint dwType, uint dwFlags,
+        IntPtr pvTypePara, char[] pszNameString, uint cchNameString);
+
     /// <summary>
-    /// Verifies that the file at the given path has a valid Authenticode signature.
-    /// Returns true if the signature is valid, false otherwise.
+    /// Verifies that the file has a valid Authenticode signature from the expected publisher.
+    /// Returns (isValid, signerName) — isValid is true only if signature is trusted AND
+    /// the signer identity matches ExpectedSignerSubstring.
     /// </summary>
-    public static bool VerifyAuthenticodeSignature(string filePath)
+    public static (bool IsValid, string? SignerName) VerifyAuthenticodeSignature(string filePath)
     {
         IntPtr filePathPtr = Marshal.StringToCoTaskMemUni(filePath);
         try
@@ -828,7 +849,7 @@ internal static class NativeMethods
                 {
                     cbStruct = (uint)Marshal.SizeOf<WINTRUST_DATA>(),
                     dwUIChoice = WTD_UI_NONE,
-                    fdwRevocationChecks = WTD_REVOKE_NONE,
+                    fdwRevocationChecks = WTD_REVOKE_WHOLECHAIN,
                     dwUnionChoice = WTD_CHOICE_FILE,
                     pFile = fileInfoPtr,
                     dwStateAction = WTD_STATEACTION_VERIFY,
@@ -837,7 +858,31 @@ internal static class NativeMethods
 
                 Guid actionId = WINTRUST_ACTION_GENERIC_VERIFY_V2;
                 int result = WinVerifyTrust(IntPtr.Zero, ref actionId, ref trustData);
-                return result == 0; // 0 = success
+
+                string? signerName = null;
+
+                if (result == 0 && trustData.hWVTStateData != IntPtr.Zero)
+                {
+                    signerName = GetSignerNameFromTrustState(trustData.hWVTStateData);
+                }
+
+                // Close the trust state to free resources
+                trustData.dwStateAction = WTD_STATEACTION_CLOSE;
+                WinVerifyTrust(IntPtr.Zero, ref actionId, ref trustData);
+
+                if (result != 0)
+                    return (false, signerName);
+
+                // Verify signer identity matches expected publisher
+                if (!string.IsNullOrEmpty(ExpectedSignerSubstring)
+                    && (signerName is null
+                        || !signerName.Contains(ExpectedSignerSubstring, StringComparison.OrdinalIgnoreCase)))
+                {
+                    AppDiagnostics.Log($"Signer identity mismatch: expected '{ExpectedSignerSubstring}', got '{signerName ?? "(none)"}'");
+                    return (false, signerName);
+                }
+
+                return (true, signerName);
             }
             finally
             {
@@ -847,6 +892,46 @@ internal static class NativeMethods
         finally
         {
             Marshal.FreeCoTaskMem(filePathPtr);
+        }
+    }
+
+    /// <summary>
+    /// Extracts the signer display name from WinVerifyTrust state data using WTHelper functions.
+    /// </summary>
+    private static string? GetSignerNameFromTrustState(IntPtr hWVTStateData)
+    {
+        try
+        {
+            IntPtr provData = WTHelperProvDataFromStateData(hWVTStateData);
+            if (provData == IntPtr.Zero) return null;
+
+            IntPtr provSigner = WTHelperGetProvSignerFromChain(provData, 0, false, 0);
+            if (provSigner == IntPtr.Zero) return null;
+
+            // CRYPT_PROVIDER_SGNR layout (both x64 and x86):
+            //   offset  0: DWORD cbStruct (4)
+            //   offset  4: FILETIME sftVerifyAsOf (8)
+            //   offset 12: DWORD csCertChain (4)
+            //   offset 16: CRYPT_PROVIDER_CERT* pasCertChain (pointer)
+            IntPtr pasCertChain = Marshal.ReadIntPtr(provSigner, 16);
+            if (pasCertChain == IntPtr.Zero) return null;
+
+            // CRYPT_PROVIDER_CERT layout:
+            //   offset 0: DWORD cbStruct (4)
+            //   offset IntPtr.Size: PCCERT_CONTEXT pCert (pointer)
+            IntPtr certContext = Marshal.ReadIntPtr(pasCertChain, IntPtr.Size);
+            if (certContext == IntPtr.Zero) return null;
+
+            char[] nameBuffer = new char[256];
+            uint len = CertGetNameStringW(certContext, CERT_NAME_SIMPLE_DISPLAY_TYPE,
+                0, IntPtr.Zero, nameBuffer, (uint)nameBuffer.Length);
+            if (len <= 1) return null;
+
+            return new string(nameBuffer, 0, (int)len - 1);
+        }
+        catch
+        {
+            return null;
         }
     }
 

@@ -52,6 +52,9 @@ internal sealed class TrayIcon : IDisposable
                 "PeekDesktop Update Available",
                 $"Version {e.Version} is available. Click here to download and install.");
         };
+
+        // Let the updater remove the tray icon before exiting during update
+        AppUpdater.RemoveTrayIcon = () => _trayIcon.Remove();
     }
 
     private void OnTaskbarCreated()
