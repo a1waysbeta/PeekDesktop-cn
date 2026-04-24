@@ -1,21 +1,32 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using PeekDesktop;
 
 internal static class Program
 {
+    private const string ZeroWindowDescription = "hwnd=0x0 class=<none> title=<none>";
+    private static readonly Regex SafeProcessNamePattern = new("^[^\\\\/:*?\"<>|\\x00-\\x1F]+$", RegexOptions.Compiled);
+
+    private sealed record HarnessOptions(int Iterations, bool Verbose);
+
     private static int Main(string[] args)
     {
-        int iterations = 10_000;
-        if (args.Length > 0 && int.TryParse(args[0], out int parsed) && parsed > 0)
-            iterations = parsed;
+        HarnessOptions options = ParseOptions(args);
+        if (options.Verbose)
+            Console.WriteLine($"Interop harness starting. Iterations={options.Iterations:N0}");
 
         var failures = new List<string>();
 
-        RunTest("Invalid handle smoke", failures, InvalidHandleSmoke);
-        RunTest("Process-name edge cases", failures, ProcessNameEdgeCases);
-        RunTest("Version info smoke", failures, VersionInfoSmoke);
-        RunTest("Notification state stress", failures, NotificationStateStress);
-        RunTest($"Leak probe ({iterations} iterations)", failures, () => LeakProbe(iterations));
+        RunTest("API surface smoke", options, failures, ApiSurfaceSmoke);
+        RunTest("Invalid handle matrix", options, failures, InvalidHandleMatrix);
+        RunTest("Point/role fuzz", options, failures, PointAndRoleFuzz);
+        RunTest("Process-id fuzz", options, failures, ProcessIdFuzz);
+        RunTest("Concurrency fuzz", options, failures, () => ConcurrencyFuzz(options.Iterations / 4));
+        RunTest("Version info smoke", options, failures, VersionInfoSmoke);
+        RunTest("Notification state stress", options, failures, NotificationStateStress);
+        RunTest("Malformed input contracts", options, failures, MalformedInputContracts);
+        RunTest($"Leak probe ({options.Iterations:N0} iterations)", options, failures, () => LeakProbe(options));
 
         if (failures.Count == 0)
         {
@@ -30,21 +41,69 @@ internal static class Program
         return 1;
     }
 
-    private static void RunTest(string name, List<string> failures, Action action)
+    private static HarnessOptions ParseOptions(string[] args)
     {
+        int iterations = 10_000;
+        bool verbose = false;
+
+        foreach (string arg in args)
+        {
+            if (int.TryParse(arg, out int parsed) && parsed > 0)
+            {
+                iterations = parsed;
+                continue;
+            }
+
+            if (string.Equals(arg, "--verbose", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(arg, "-v", StringComparison.OrdinalIgnoreCase))
+            {
+                verbose = true;
+            }
+        }
+
+        return new HarnessOptions(iterations, verbose);
+    }
+
+    private static void RunTest(string name, HarnessOptions options, List<string> failures, Action action)
+    {
+        var sw = Stopwatch.StartNew();
         try
         {
             action();
-            Console.WriteLine($"[PASS] {name}");
+            Console.WriteLine($"[PASS] {name} ({sw.ElapsedMilliseconds} ms)");
         }
         catch (Exception ex)
         {
             failures.Add($"{name}: {ex.GetType().Name} {ex.Message}");
-            Console.WriteLine($"[FAIL] {name}");
+            Console.WriteLine($"[FAIL] {name} ({sw.ElapsedMilliseconds} ms)");
         }
+
+        if (options.Verbose)
+            Console.WriteLine($"        Completed: {name}");
     }
 
-    private static void InvalidHandleSmoke()
+    private static void ApiSurfaceSmoke()
+    {
+        _ = NativeMethods.GetForegroundWindow();
+        _ = NativeMethods.TryGetCursorPoint(out NativeMethods.POINT point);
+        string pointDescription = NativeMethods.DescribePoint(point);
+        if (!pointDescription.Contains("x=") || !pointDescription.Contains("y="))
+            throw new InvalidOperationException("DescribePoint returned an unexpected format.");
+
+        _ = NativeMethods.TryGetUserNotificationState(out _);
+        _ = NativeMethods.GetExeVersionInfo();
+        if (!NativeMethods.TryGetProcessName((uint)Environment.ProcessId, out string processName)
+            || string.IsNullOrWhiteSpace(processName))
+        {
+            throw new InvalidOperationException("Current process name should resolve to a non-empty value.");
+        }
+
+        bool hasAccessibleDetails = NativeMethods.TryGetAccessibleDetailsAtPoint(point, out int role, out string name);
+        if (hasAccessibleDetails || role != 0 || name.Length != 0)
+            throw new InvalidOperationException("Accessible details baseline contract was violated.");
+    }
+
+    private static void InvalidHandleMatrix()
     {
         IntPtr foreground = NativeMethods.GetForegroundWindow();
         IntPtr[] handles =
@@ -52,41 +111,130 @@ internal static class Program
             IntPtr.Zero,
             new IntPtr(1),
             new IntPtr(-1),
-            new IntPtr(0x1234),
-            new IntPtr(0x12345678),
+            new IntPtr(int.MaxValue),
+            new IntPtr(unchecked((int)0xdeadbeef)),
             foreground
         ];
 
         foreach (IntPtr hwnd in handles)
         {
-            _ = NativeMethods.IsWindow(hwnd);
-            _ = NativeMethods.IsWindowVisible(hwnd);
-            _ = NativeMethods.IsIconic(hwnd);
-            _ = NativeMethods.IsWindowCloaked(hwnd);
-            _ = NativeMethods.GetWindowClassName(hwnd);
-            _ = NativeMethods.GetWindowTitle(hwnd);
-            _ = NativeMethods.DescribeWindow(hwnd);
-            _ = NativeMethods.DescribeWindowHierarchy(hwnd, maxDepth: 4);
+            bool isWindow = NativeMethods.IsWindow(hwnd);
+            bool isVisible = NativeMethods.IsWindowVisible(hwnd);
+            bool isIconic = NativeMethods.IsIconic(hwnd);
+            bool isCloaked = NativeMethods.IsWindowCloaked(hwnd);
+            string className = NativeMethods.GetWindowClassName(hwnd);
+            string title = NativeMethods.GetWindowTitle(hwnd);
+            string description = NativeMethods.DescribeWindow(hwnd);
+            string hierarchy = NativeMethods.DescribeWindowHierarchy(hwnd, maxDepth: 4);
             _ = NativeMethods.GetWindowLongValue(hwnd, NativeMethods.GWL_EXSTYLE);
-        }
 
-        bool listViewHit = NativeMethods.TryIsDesktopListViewItemAtPoint(
-            IntPtr.Zero,
-            new NativeMethods.POINT { x = int.MaxValue, y = int.MinValue },
-            out bool onItem);
-        if (listViewHit && onItem)
-            throw new InvalidOperationException("Unexpected desktop list-view hit on invalid hwnd.");
+            bool hitTestResolved = NativeMethods.TryIsDesktopListViewItemAtPoint(
+                hwnd,
+                new NativeMethods.POINT { x = int.MaxValue, y = int.MinValue },
+                out bool isOnItem);
+
+            if (hwnd == IntPtr.Zero)
+            {
+                if (isWindow || isVisible || isIconic || isCloaked)
+                    throw new InvalidOperationException("Zero handle should not report window state.");
+
+                if (className.Length != 0 || title.Length != 0)
+                    throw new InvalidOperationException("Zero handle returned unexpected class or title.");
+
+                if (!string.Equals(description, ZeroWindowDescription, StringComparison.Ordinal))
+                    throw new InvalidOperationException("Zero handle description contract was violated.");
+
+                if (!string.Equals(hierarchy, "<none>", StringComparison.Ordinal))
+                    throw new InvalidOperationException("Zero handle hierarchy contract was violated.");
+
+                if (hitTestResolved || isOnItem)
+                    throw new InvalidOperationException("ListView hit-test should fail for zero handle.");
+            }
+
+            if (description.Length > 4096 || hierarchy.Length > 16384)
+                throw new InvalidOperationException("Window diagnostics returned unexpectedly large payloads.");
+        }
     }
 
-    private static void ProcessNameEdgeCases()
+    private static void PointAndRoleFuzz()
     {
-        if (NativeMethods.TryGetProcessName(0, out _))
-            throw new InvalidOperationException("processId=0 should not resolve.");
+        NativeMethods.POINT[] points =
+        [
+            new() { x = 0, y = 0 },
+            new() { x = -1, y = -1 },
+            new() { x = int.MinValue, y = int.MinValue },
+            new() { x = int.MaxValue, y = int.MaxValue },
+            new() { x = 50_000, y = -50_000 }
+        ];
 
-        _ = NativeMethods.TryGetProcessName(uint.MaxValue, out _);
-        _ = NativeMethods.TryGetProcessName((uint)Environment.ProcessId, out string processName);
-        if (string.IsNullOrWhiteSpace(processName))
-            throw new InvalidOperationException("Current process name was empty.");
+        foreach (NativeMethods.POINT point in points)
+        {
+            string description = NativeMethods.DescribePoint(point);
+            if (!description.Contains($"x={point.x}") || !description.Contains($"y={point.y}"))
+                throw new InvalidOperationException("DescribePoint did not preserve point coordinates.");
+
+            bool accessibleFound = NativeMethods.TryGetAccessibleDetailsAtPoint(point, out int role, out string name);
+            if (accessibleFound || role != 0 || name.Length != 0)
+                throw new InvalidOperationException("Accessible details contract was violated for fuzz input.");
+
+            bool hitTestResolved = NativeMethods.TryIsDesktopListViewItemAtPoint(IntPtr.Zero, point, out bool isOnItem);
+            if (hitTestResolved || isOnItem)
+                throw new InvalidOperationException("ListView hit-test should fail for invalid source hwnd.");
+        }
+    }
+
+    private static void ProcessIdFuzz()
+    {
+        ValidateProcessLookup(0, expectedToResolve: false);
+
+        uint[] processIds =
+        [
+            1,
+            2,
+            4,
+            (uint)Environment.ProcessId,
+            uint.MaxValue,
+            1234567890u
+        ];
+
+        foreach (uint processId in processIds)
+            ValidateProcessLookup(processId, expectedToResolve: processId == (uint)Environment.ProcessId);
+    }
+
+    private static void ConcurrencyFuzz(int iterationsPerWorker)
+    {
+        if (iterationsPerWorker < 1)
+            iterationsPerWorker = 1;
+
+        var tasks = new List<Task>(4);
+        int contractViolations = 0;
+        for (int worker = 0; worker < 4; worker++)
+        {
+            int seed = 1000 + worker;
+            tasks.Add(Task.Run(() =>
+            {
+                var rand = new Random(seed);
+                for (int i = 0; i < iterationsPerWorker; i++)
+                {
+                    IntPtr hwnd = i % 2 == 0 ? IntPtr.Zero : new IntPtr(rand.Next(int.MinValue, int.MaxValue));
+                    string className = NativeMethods.GetWindowClassName(hwnd);
+                    string title = NativeMethods.GetWindowTitle(hwnd);
+                    _ = NativeMethods.IsWindowCloaked(hwnd);
+                    string description = NativeMethods.DescribeWindow(hwnd);
+                    bool stateResolved = NativeMethods.TryGetUserNotificationState(out NativeMethods.UserNotificationState state);
+
+                    if (hwnd == IntPtr.Zero && (className.Length != 0 || title.Length != 0 || description != ZeroWindowDescription))
+                        Interlocked.Increment(ref contractViolations);
+
+                    if (stateResolved && !Enum.IsDefined(state))
+                        Interlocked.Increment(ref contractViolations);
+                }
+            }));
+        }
+
+        Task.WaitAll([.. tasks]);
+        if (contractViolations != 0)
+            throw new InvalidOperationException($"Concurrency contract violations observed: {contractViolations}");
     }
 
     private static void VersionInfoSmoke()
@@ -98,52 +246,146 @@ internal static class Program
 
     private static void NotificationStateStress()
     {
-        for (int i = 0; i < 2_000; i++)
-            _ = NativeMethods.TryGetUserNotificationState(out _);
+        int resolvedCount = 0;
+        for (int i = 0; i < 5_000; i++)
+        {
+            bool resolved = NativeMethods.TryGetUserNotificationState(out NativeMethods.UserNotificationState state);
+            if (resolved)
+            {
+                if (!Enum.IsDefined(state))
+                    throw new InvalidOperationException($"Invalid notification state value: {(int)state}");
+
+                resolvedCount++;
+            }
+        }
+
+        if (resolvedCount == 0)
+            throw new InvalidOperationException("Notification state never resolved successfully.");
     }
 
-    private static void LeakProbe(int iterations)
+    private static void MalformedInputContracts()
     {
+        NativeMethods.POINT malformedPoint = new() { x = int.MaxValue, y = int.MinValue };
+        bool resolved = NativeMethods.TryGetAccessibleDetailsAtPoint(malformedPoint, out int role, out string name);
+        if (resolved || role != 0 || name.Length != 0)
+            throw new InvalidOperationException("Malformed point should not produce accessible details.");
+
+        resolved = NativeMethods.TryGetProcessName(uint.MaxValue, out string processName);
+        if (!resolved && processName.Length != 0)
+            throw new InvalidOperationException("Failed process lookup should clear process name.");
+
+        resolved = NativeMethods.TryGetProcessName(0, out processName);
+        if (resolved || processName.Length != 0)
+            throw new InvalidOperationException("PID zero should fail and return an empty process name.");
+    }
+
+    private static void LeakProbe(HarnessOptions options)
+    {
+        int phaseIterations = Math.Max(1, options.Iterations / 2);
+        RunLeakWorkload(Math.Max(1, phaseIterations / 2), seed: 17);
+        ForceGc();
+
         Process proc = Process.GetCurrentProcess();
         proc.Refresh();
         long privateBefore = proc.PrivateMemorySize64;
         int handlesBefore = proc.HandleCount;
 
-        var rand = new Random(1337);
+        RunLeakWorkload(phaseIterations, seed: 1337);
+        ForceGc();
+        proc.Refresh();
+        long privateMid = proc.PrivateMemorySize64;
+        int handlesMid = proc.HandleCount;
+
+        RunLeakWorkload(phaseIterations, seed: 2112);
+        ForceGc();
+        proc.Refresh();
+        long privateAfter = proc.PrivateMemorySize64;
+        int handlesAfter = proc.HandleCount;
+
+        long privateGrowthPhase1 = privateMid - privateBefore;
+        long privateGrowthPhase2 = privateAfter - privateMid;
+        long privateGrowthTotal = privateAfter - privateBefore;
+        int handleGrowthPhase1 = handlesMid - handlesBefore;
+        int handleGrowthPhase2 = handlesAfter - handlesMid;
+        int handleGrowthTotal = handlesAfter - handlesBefore;
+
+        if (options.Verbose)
+        {
+            Console.WriteLine($"        LeakProbe private bytes before={privateBefore:N0} mid={privateMid:N0} after={privateAfter:N0}");
+            Console.WriteLine($"        LeakProbe private growth phase1={privateGrowthPhase1:N0} phase2={privateGrowthPhase2:N0} total={privateGrowthTotal:N0}");
+            Console.WriteLine($"        LeakProbe handles before={handlesBefore:N0} mid={handlesMid:N0} after={handlesAfter:N0}");
+            Console.WriteLine($"        LeakProbe handle growth phase1={handleGrowthPhase1:N0} phase2={handleGrowthPhase2:N0} total={handleGrowthTotal:N0}");
+        }
+
+        const long maxPrivateGrowthBytes = 64L * 1024 * 1024;
+        const int maxHandleGrowth = 16;
+        const long maxSecondPhasePrivateGrowth = 24L * 1024 * 1024;
+        const int maxSecondPhaseHandleGrowth = 8;
+
+        if (privateGrowthTotal > maxPrivateGrowthBytes)
+        {
+            throw new InvalidOperationException(
+                $"Private bytes grew by {privateGrowthTotal:N0} (> {maxPrivateGrowthBytes:N0}).");
+        }
+
+        if (handleGrowthTotal > maxHandleGrowth)
+        {
+            throw new InvalidOperationException(
+                $"Handle count grew by {handleGrowthTotal} (> {maxHandleGrowth}).");
+        }
+
+        if (privateGrowthPhase2 > maxSecondPhasePrivateGrowth)
+        {
+            throw new InvalidOperationException(
+                $"Private bytes grew by {privateGrowthPhase2:N0} in phase 2 (> {maxSecondPhasePrivateGrowth:N0}).");
+        }
+
+        if (handleGrowthPhase2 > maxSecondPhaseHandleGrowth)
+        {
+            throw new InvalidOperationException(
+                $"Handle count grew by {handleGrowthPhase2} in phase 2 (> {maxSecondPhaseHandleGrowth}).");
+        }
+    }
+
+    private static void ValidateProcessLookup(uint processId, bool expectedToResolve)
+    {
+        bool resolved = NativeMethods.TryGetProcessName(processId, out string processName);
+        if (expectedToResolve && !resolved)
+            throw new InvalidOperationException($"Expected process lookup to succeed for pid={processId}.");
+
+        if (!resolved)
+        {
+            if (processName.Length != 0)
+                throw new InvalidOperationException($"Failed process lookup returned non-empty name for pid={processId}.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(processName))
+            throw new InvalidOperationException($"Resolved process lookup returned empty name for pid={processId}.");
+
+        if (!SafeProcessNamePattern.IsMatch(processName))
+            throw new InvalidOperationException($"Resolved process name contains invalid characters for pid={processId}: '{processName}'.");
+    }
+
+    private static void RunLeakWorkload(int iterations, int seed)
+    {
+        var rand = new Random(seed);
         for (int i = 0; i < iterations; i++)
         {
-            IntPtr hwnd = i % 2 == 0 ? IntPtr.Zero : new IntPtr(rand.Next());
+            IntPtr hwnd = i % 2 == 0 ? IntPtr.Zero : new IntPtr(rand.Next(int.MinValue, int.MaxValue));
             _ = NativeMethods.GetWindowClassName(hwnd);
             _ = NativeMethods.GetWindowTitle(hwnd);
             _ = NativeMethods.IsWindowCloaked(hwnd);
             _ = NativeMethods.DescribeWindow(hwnd);
             _ = NativeMethods.TryGetProcessName((uint)rand.Next(1, int.MaxValue), out _);
+            _ = NativeMethods.TryGetUserNotificationState(out _);
         }
+    }
 
+    private static void ForceGc()
+    {
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
-
-        proc.Refresh();
-        long privateAfter = proc.PrivateMemorySize64;
-        int handlesAfter = proc.HandleCount;
-
-        long privateGrowth = privateAfter - privateBefore;
-        int handleGrowth = handlesAfter - handlesBefore;
-
-        const long maxPrivateGrowthBytes = 64L * 1024 * 1024;
-        const int maxHandleGrowth = 16;
-
-        if (privateGrowth > maxPrivateGrowthBytes)
-        {
-            throw new InvalidOperationException(
-                $"Private bytes grew by {privateGrowth:N0} (> {maxPrivateGrowthBytes:N0}).");
-        }
-
-        if (handleGrowth > maxHandleGrowth)
-        {
-            throw new InvalidOperationException(
-                $"Handle count grew by {handleGrowth} (> {maxHandleGrowth}).");
-        }
     }
 }

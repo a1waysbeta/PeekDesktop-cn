@@ -111,6 +111,12 @@ dotnet run --project src/PeekDesktop/PeekDesktop.csproj
 
 # Run the P/Invoke safety harness (invalid handles + stress/leak checks)
 dotnet run --project src/PeekDesktop.InteropHarness/PeekDesktop.InteropHarness.csproj -- 10000
+
+# Windows-friendly wrapper script
+.\test.ps1 -Iterations 10000
+
+# Verbose mode (prints per-test timing + leak probe diagnostics)
+.\test.ps1 -Iterations 10000 -VerboseOutput
 ```
 
 ### Publish a self-contained single-file exe
