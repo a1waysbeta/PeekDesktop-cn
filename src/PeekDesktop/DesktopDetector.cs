@@ -176,7 +176,13 @@ public static class DesktopDetector
         // transparent overlay classes that cover the whole taskbar.
         NativeMethods.POINT clientPt = screenPoint;
         NativeMethods.ScreenToClient(hwnd, ref clientPt);
-        IntPtr child = NativeMethods.RealChildWindowFromPoint(hwnd, clientPt);
+        IntPtr child = NativeMethods.ChildWindowFromPointEx(
+            hwnd,
+            clientPt,
+            NativeMethods.CWP_SKIPINVISIBLE | NativeMethods.CWP_SKIPDISABLED | NativeMethods.CWP_SKIPTRANSPARENT);
+
+        if (child == IntPtr.Zero || child == hwnd)
+            child = NativeMethods.RealChildWindowFromPoint(hwnd, clientPt);
 
         if (child == IntPtr.Zero || child == hwnd)
             return ClassifyTaskbarOverlayPoint(screenPoint);
@@ -203,6 +209,68 @@ public static class DesktopDetector
         }
 
         AppDiagnostics.Log($"Taskbar UIA classification at {NativeMethods.DescribePoint(screenPoint)}: {description}");
+
+        if (!isInteractive && IsTaskbarFrameClassification(description))
+        {
+            if (TryFindNearbyInteractiveTaskbarElement(screenPoint, out NativeMethods.POINT interactivePoint, out string nearbyDescription))
+            {
+                AppDiagnostics.Log(
+                    $"Taskbar UIA nearby probe found interactive element near {NativeMethods.DescribePoint(screenPoint)} " +
+                    $"at {NativeMethods.DescribePoint(interactivePoint)}: {nearbyDescription}");
+                return false;
+            }
+
+            // On some negative-coordinate taskbars, UIA can report the frame container
+            // instead of the actual button under the cursor. Prefer false negatives
+            // (no peek) over false positives (peek on app button clicks).
+            if (screenPoint.x < 0)
+            {
+                AppDiagnostics.Log(
+                    $"Taskbar UIA frame-only result on negative X at {NativeMethods.DescribePoint(screenPoint)}; treating as non-blank");
+                return false;
+            }
+        }
+
         return !isInteractive;
+    }
+
+    private static bool IsTaskbarFrameClassification(string description)
+    {
+        return description.Contains("class=\"Taskbar.TaskbarFrameAutomationPeer\"", StringComparison.Ordinal)
+            || description.Contains("aid=\"TaskbarFrame\"", StringComparison.Ordinal);
+    }
+
+    private static bool TryFindNearbyInteractiveTaskbarElement(
+        NativeMethods.POINT origin,
+        out NativeMethods.POINT interactivePoint,
+        out string interactiveDescription)
+    {
+        static NativeMethods.POINT Offset(NativeMethods.POINT p, int dx, int dy) => new() { x = p.x + dx, y = p.y + dy };
+
+        // Probe a small neighborhood so minor hit-testing drift still detects taskbar buttons.
+        ReadOnlySpan<(int dx, int dy)> offsets =
+        [
+            (-48, 0), (-32, 0), (-20, 0), (-12, 0), (12, 0), (20, 0), (32, 0), (48, 0),
+            (-24, -8), (-12, -8), (12, -8), (24, -8),
+            (-24, 8), (-12, 8), (12, 8), (24, 8)
+        ];
+
+        foreach ((int dx, int dy) in offsets)
+        {
+            NativeMethods.POINT probe = Offset(origin, dx, dy);
+            if (!UiAutomationCom.TryIsTaskbarElementInteractiveAtPoint(probe, out bool isInteractive, out string description))
+                continue;
+
+            if (!isInteractive)
+                continue;
+
+            interactivePoint = probe;
+            interactiveDescription = description;
+            return true;
+        }
+
+        interactivePoint = origin;
+        interactiveDescription = string.Empty;
+        return false;
     }
 }

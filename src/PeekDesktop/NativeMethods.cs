@@ -274,6 +274,9 @@ internal static class NativeMethods
     public static extern IntPtr RealChildWindowFromPoint(IntPtr hwndParent, POINT pt);
 
     [DllImport("user32.dll")]
+    public static extern IntPtr ChildWindowFromPointEx(IntPtr hWndParent, POINT pt, uint uFlags);
+
+    [DllImport("user32.dll")]
     public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
     [DllImport("user32.dll")]
@@ -286,6 +289,9 @@ internal static class NativeMethods
     public const int SM_CYDOUBLECLK = 37;
     public const int SM_CXDRAG = 68;
     public const int SM_CYDRAG = 69;
+    public const uint CWP_SKIPINVISIBLE = 0x0001;
+    public const uint CWP_SKIPDISABLED = 0x0002;
+    public const uint CWP_SKIPTRANSPARENT = 0x0004;
 
     // --- Monitor info ---
     public const uint MONITOR_DEFAULTTONEAREST = 2;
