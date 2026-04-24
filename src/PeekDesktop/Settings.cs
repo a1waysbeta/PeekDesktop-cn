@@ -24,6 +24,7 @@ public sealed class Settings
     public bool PauseWhileFullscreenAppActive { get; set; } = true;
     public bool PeekOnTaskbarClick { get; set; } = false;
     public bool RestoreHiddenWindowsOnAppOpen { get; set; } = true;
+    public bool AutoCheckForUpdates { get; set; } = true;
     public PeekMode PeekMode { get; set; } = PeekMode.NativeShowDesktop;
 
     public static Settings Load()
@@ -122,6 +123,11 @@ public sealed class Settings
                 reader.Read();
                 settings.RestoreHiddenWindowsOnAppOpen = reader.GetBoolean();
             }
+            else if (reader.ValueTextEquals("AutoCheckForUpdates"u8))
+            {
+                reader.Read();
+                settings.AutoCheckForUpdates = reader.GetBoolean();
+            }
             else if (reader.ValueTextEquals("PeekMode"u8))
             {
                 reader.Read();
@@ -148,6 +154,7 @@ public sealed class Settings
         writer.WriteBoolean("PauseWhileFullscreenAppActive"u8, PauseWhileFullscreenAppActive);
         writer.WriteBoolean("PeekOnTaskbarClick"u8, PeekOnTaskbarClick);
         writer.WriteBoolean("RestoreHiddenWindowsOnAppOpen"u8, RestoreHiddenWindowsOnAppOpen);
+        writer.WriteBoolean("AutoCheckForUpdates"u8, AutoCheckForUpdates);
         writer.WriteNumber("PeekMode"u8, (int)PeekMode);
         writer.WriteEndObject();
 

@@ -22,6 +22,7 @@ internal sealed class TrayIcon : IDisposable
     private const uint ID_MODE_NATIVE = 12;
     private const uint ID_ABOUT = 20;
     private const uint ID_UPDATES = 21;
+    private const uint ID_AUTO_UPDATES = 22;
     private const uint ID_EXIT = 30;
 
     private readonly Win32TrayIcon _trayIcon;
@@ -49,7 +50,7 @@ internal sealed class TrayIcon : IDisposable
         {
             _trayIcon.ShowBalloon(
                 "PeekDesktop Update Available",
-                $"Version {e.Version} is available. Click here to open the download page.");
+                $"Version {e.Version} is available. Click here to download and install.");
         };
     }
 
@@ -84,7 +85,7 @@ internal sealed class TrayIcon : IDisposable
 
             if (Win32TrayIcon.IsBalloonClick(lParam))
             {
-                _appUpdater.OpenLatestReleasePage();
+                _appUpdater.PromptAndInstall();
                 return (true, IntPtr.Zero);
             }
         }
@@ -108,6 +109,7 @@ internal sealed class TrayIcon : IDisposable
         menu.AddSeparator();
         menu.AddItem(ID_ABOUT, "About PeekDesktop", ShowAbout);
         menu.AddItem(ID_UPDATES, "Check for Updates", CheckForUpdates);
+        menu.AddItem(ID_AUTO_UPDATES, "Auto-Check for Updates", ToggleAutoUpdates, _settings.AutoCheckForUpdates);
         menu.AddSeparator();
         menu.AddItem(ID_EXIT, "Exit", DoExit);
 
@@ -190,6 +192,12 @@ internal sealed class TrayIcon : IDisposable
     private async void CheckForUpdates()
     {
         await _appUpdater.CheckForUpdatesAsync(interactive: true);
+    }
+
+    private void ToggleAutoUpdates()
+    {
+        _settings.AutoCheckForUpdates = !_settings.AutoCheckForUpdates;
+        _settings.Save();
     }
 
     private void DoExit()

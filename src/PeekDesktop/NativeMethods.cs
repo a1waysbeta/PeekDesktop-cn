@@ -761,6 +761,160 @@ internal static class NativeMethods
 
     #endregion
 
+    // --- Authenticode verification ---
+
+    private static readonly Guid WINTRUST_ACTION_GENERIC_VERIFY_V2 =
+        new(0xaac56b, 0xcd44, 0x11d0, 0x8c, 0xc2, 0x00, 0xc0, 0x4f, 0xc2, 0x95, 0xee);
+
+    private const uint WTD_UI_NONE = 2;
+    private const uint WTD_REVOKE_NONE = 0;
+    private const uint WTD_CHOICE_FILE = 1;
+    private const uint WTD_STATEACTION_VERIFY = 1;
+    private const uint WTD_SAFER_FLAG = 0x100;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct WINTRUST_FILE_INFO
+    {
+        public uint cbStruct;
+        public IntPtr pcwszFilePath;
+        public IntPtr hFile;
+        public IntPtr pgKnownSubject;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WINTRUST_DATA
+    {
+        public uint cbStruct;
+        public IntPtr pPolicyCallbackData;
+        public IntPtr pSIPClientData;
+        public uint dwUIChoice;
+        public uint fdwRevocationChecks;
+        public uint dwUnionChoice;
+        public IntPtr pFile; // WINTRUST_FILE_INFO*
+        public uint dwStateAction;
+        public IntPtr hWVTStateData;
+        public IntPtr pwszURLReference;
+        public uint dwProvFlags;
+        public uint dwUIContext;
+        public IntPtr pSignatureSettings;
+    }
+
+    [DllImport("wintrust.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern int WinVerifyTrust(IntPtr hWnd, ref Guid pgActionID, ref WINTRUST_DATA pWVTData);
+
+    /// <summary>
+    /// Verifies that the file at the given path has a valid Authenticode signature.
+    /// Returns true if the signature is valid, false otherwise.
+    /// </summary>
+    public static bool VerifyAuthenticodeSignature(string filePath)
+    {
+        IntPtr filePathPtr = Marshal.StringToCoTaskMemUni(filePath);
+        try
+        {
+            var fileInfo = new WINTRUST_FILE_INFO
+            {
+                cbStruct = (uint)Marshal.SizeOf<WINTRUST_FILE_INFO>(),
+                pcwszFilePath = filePathPtr,
+                hFile = IntPtr.Zero,
+                pgKnownSubject = IntPtr.Zero
+            };
+
+            IntPtr fileInfoPtr = Marshal.AllocCoTaskMem(Marshal.SizeOf<WINTRUST_FILE_INFO>());
+            try
+            {
+                Marshal.StructureToPtr(fileInfo, fileInfoPtr, false);
+
+                var trustData = new WINTRUST_DATA
+                {
+                    cbStruct = (uint)Marshal.SizeOf<WINTRUST_DATA>(),
+                    dwUIChoice = WTD_UI_NONE,
+                    fdwRevocationChecks = WTD_REVOKE_NONE,
+                    dwUnionChoice = WTD_CHOICE_FILE,
+                    pFile = fileInfoPtr,
+                    dwStateAction = WTD_STATEACTION_VERIFY,
+                    dwProvFlags = WTD_SAFER_FLAG
+                };
+
+                Guid actionId = WINTRUST_ACTION_GENERIC_VERIFY_V2;
+                int result = WinVerifyTrust(IntPtr.Zero, ref actionId, ref trustData);
+                return result == 0; // 0 = success
+            }
+            finally
+            {
+                Marshal.FreeCoTaskMem(fileInfoPtr);
+            }
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem(filePathPtr);
+        }
+    }
+
+    // --- Process creation ---
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct STARTUPINFOW
+    {
+        public uint cb;
+        public IntPtr lpReserved;
+        public IntPtr lpDesktop;
+        public IntPtr lpTitle;
+        public uint dwX, dwY, dwXSize, dwYSize;
+        public uint dwXCountChars, dwYCountChars;
+        public uint dwFillAttribute;
+        public uint dwFlags;
+        public ushort wShowWindow;
+        public ushort cbReserved2;
+        public IntPtr lpReserved2;
+        public IntPtr hStdInput, hStdOutput, hStdError;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PROCESS_INFORMATION
+    {
+        public IntPtr hProcess;
+        public IntPtr hThread;
+        public uint dwProcessId;
+        public uint dwThreadId;
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CreateProcessW(
+        string? lpApplicationName,
+        string? lpCommandLine,
+        IntPtr lpProcessAttributes,
+        IntPtr lpThreadAttributes,
+        [MarshalAs(UnmanagedType.Bool)] bool bInheritHandles,
+        uint dwCreationFlags,
+        IntPtr lpEnvironment,
+        string? lpCurrentDirectory,
+        ref STARTUPINFOW lpStartupInfo,
+        out PROCESS_INFORMATION lpProcessInformation);
+
+    /// <summary>
+    /// Launches a new process and returns true on success. Handles are closed immediately.
+    /// </summary>
+    public static bool LaunchProcess(string exePath, string? arguments = null)
+    {
+        var si = new STARTUPINFOW { cb = (uint)Marshal.SizeOf<STARTUPINFOW>() };
+        // Quote the path to handle spaces
+        string commandLine = arguments is not null
+            ? $"\"{exePath}\" {arguments}"
+            : $"\"{exePath}\"";
+
+        if (!CreateProcessW(null, commandLine, IntPtr.Zero, IntPtr.Zero,
+            false, 0, IntPtr.Zero, null, ref si, out PROCESS_INFORMATION pi))
+        {
+            AppDiagnostics.Log($"CreateProcessW failed: {Marshal.GetLastWin32Error()}");
+            return false;
+        }
+
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        return true;
+    }
+
     // --- Shell ---
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]

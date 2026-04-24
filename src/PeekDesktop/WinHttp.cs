@@ -12,6 +12,98 @@ namespace PeekDesktop;
 internal static class WinHttp
 {
     /// <summary>
+    /// Downloads a file from a URL and saves it to disk. Used for fetching release zip assets.
+    /// Runs synchronously — call from a background thread to keep UI responsive.
+    /// </summary>
+    public static void DownloadToFile(string url, string userAgent, string destinationPath, int timeoutSeconds = 60)
+    {
+        IntPtr hSession = IntPtr.Zero;
+        IntPtr hConnect = IntPtr.Zero;
+        IntPtr hRequest = IntPtr.Zero;
+
+        try
+        {
+            var components = new URL_COMPONENTS
+            {
+                dwStructSize = (uint)Marshal.SizeOf<URL_COMPONENTS>(),
+                dwHostNameLength = unchecked((uint)-1),
+                dwUrlPathLength = unchecked((uint)-1),
+                dwExtraInfoLength = unchecked((uint)-1)
+            };
+
+            if (!WinHttpCrackUrl(url, (uint)url.Length, 0, ref components))
+                throw new InvalidOperationException($"WinHttpCrackUrl failed: {Marshal.GetLastWin32Error()}");
+
+            string hostName = Marshal.PtrToStringUni(components.lpszHostName, (int)components.dwHostNameLength)!;
+            string urlPath = Marshal.PtrToStringUni(components.lpszUrlPath, (int)components.dwUrlPathLength)!;
+            if (components.dwExtraInfoLength > 0)
+                urlPath += Marshal.PtrToStringUni(components.lpszExtraInfo, (int)components.dwExtraInfoLength);
+
+            hSession = WinHttpOpen(userAgent, WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, null, null, 0);
+            if (hSession == IntPtr.Zero)
+                throw new InvalidOperationException($"WinHttpOpen failed: {Marshal.GetLastWin32Error()}");
+
+            int timeoutMs = timeoutSeconds * 1000;
+            WinHttpSetTimeouts(hSession, timeoutMs, timeoutMs, timeoutMs, timeoutMs);
+
+            hConnect = WinHttpConnect(hSession, hostName, components.nPort, 0);
+            if (hConnect == IntPtr.Zero)
+                throw new InvalidOperationException($"WinHttpConnect failed: {Marshal.GetLastWin32Error()}");
+
+            uint flags = (components.nScheme == INTERNET_SCHEME_HTTPS) ? WINHTTP_FLAG_SECURE : 0;
+            hRequest = WinHttpOpenRequest(hConnect, "GET", urlPath, null, null, null, flags);
+            if (hRequest == IntPtr.Zero)
+                throw new InvalidOperationException($"WinHttpOpenRequest failed: {Marshal.GetLastWin32Error()}");
+
+            WinHttpAddRequestHeaders(hRequest, "Accept: application/octet-stream\r\n",
+                unchecked((uint)-1), WINHTTP_ADDREQ_FLAG_ADD);
+
+            if (!WinHttpSendRequest(hRequest, IntPtr.Zero, 0, IntPtr.Zero, 0, 0, 0))
+                throw new InvalidOperationException($"WinHttpSendRequest failed: {Marshal.GetLastWin32Error()}");
+
+            if (!WinHttpReceiveResponse(hRequest, IntPtr.Zero))
+                throw new InvalidOperationException($"WinHttpReceiveResponse failed: {Marshal.GetLastWin32Error()}");
+
+            uint statusCode = QueryStatusCode(hRequest);
+            if (statusCode < 200 || statusCode >= 300)
+                throw new InvalidOperationException($"HTTP {statusCode}");
+
+            const int maxBytes = 50 * 1024 * 1024; // 50 MB
+            byte[] buffer = new byte[65536];
+            int totalRead = 0;
+
+            using var fs = new System.IO.FileStream(destinationPath, System.IO.FileMode.Create,
+                System.IO.FileAccess.Write, System.IO.FileShare.None);
+
+            while (true)
+            {
+                if (!WinHttpQueryDataAvailable(hRequest, out uint bytesAvailable))
+                    break;
+                if (bytesAvailable == 0)
+                    break;
+
+                uint toRead = Math.Min(bytesAvailable, (uint)buffer.Length);
+                if (!WinHttpReadData(hRequest, buffer, toRead, out uint bytesRead))
+                    break;
+                if (bytesRead == 0)
+                    break;
+
+                totalRead += (int)bytesRead;
+                if (totalRead > maxBytes)
+                    throw new InvalidOperationException($"Download exceeded {maxBytes / (1024 * 1024)} MB limit");
+
+                fs.Write(buffer, 0, (int)bytesRead);
+            }
+        }
+        finally
+        {
+            if (hRequest != IntPtr.Zero) WinHttpCloseHandle(hRequest);
+            if (hConnect != IntPtr.Zero) WinHttpCloseHandle(hConnect);
+            if (hSession != IntPtr.Zero) WinHttpCloseHandle(hSession);
+        }
+    }
+
+    /// <summary>
     /// Performs a synchronous HTTPS GET and returns the response body as a UTF-8 string.
     /// Throws on any failure (connection, HTTP error status, etc.).
     /// </summary>

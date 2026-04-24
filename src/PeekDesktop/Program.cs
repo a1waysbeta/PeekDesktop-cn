@@ -11,11 +11,41 @@ public static class Program
     private static Mutex? _mutex;
 
     [STAThread]
-    public static void Main()
+    public static void Main(string[] args)
     {
+        bool isRestarting = args.Length > 0
+            && args[0].Equals("--restarting", StringComparison.OrdinalIgnoreCase);
+
+        // Startup cleanup: remove leftover files from a previous update
+        AppUpdater.CleanupPreviousUpdate();
+
+        // Acquire single-instance mutex. If restarting after an update,
+        // retry for a few seconds while the old process exits.
         _mutex = new Mutex(true, @"Local\PeekDesktop_SingleInstance", out bool isNewInstance);
         if (!isNewInstance)
-            return;
+        {
+            if (isRestarting)
+            {
+                for (int i = 0; i < 20 && !isNewInstance; i++)
+                {
+                    Thread.Sleep(250);
+                    try
+                    {
+                        isNewInstance = _mutex.WaitOne(0);
+                    }
+                    catch (AbandonedMutexException)
+                    {
+                        isNewInstance = true;
+                    }
+                }
+            }
+
+            if (!isNewInstance)
+            {
+                _mutex.Dispose();
+                return;
+            }
+        }
 
         try
         {
@@ -65,18 +95,34 @@ public static class Program
         Settings.SetAutoStart(settings.StartWithWindows);
         _desktopPeek = new DesktopPeek(settings);
         _appUpdater = new AppUpdater(messageLoop);
+
+        // Let the updater release the mutex before relaunching
+        AppUpdater.ReleaseMutex = () =>
+        {
+            try
+            {
+                _mutex?.ReleaseMutex();
+                _mutex?.Dispose();
+                _mutex = null;
+            }
+            catch { /* best effort */ }
+        };
+
         _trayIcon = new TrayIcon(messageLoop, _desktopPeek, _appUpdater, settings, () => messageLoop.Quit());
 
         if (settings.Enabled)
             _desktopPeek.Start();
 
-        _ = Task.Run(async () =>
+        if (settings.AutoCheckForUpdates)
         {
-            await Task.Delay(2000);
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(2000);
 
-            if (_appUpdater is not null)
-                await _appUpdater.CheckForUpdatesAsync(interactive: false);
-        });
+                if (_appUpdater is not null)
+                    await _appUpdater.CheckForUpdatesAsync(interactive: false);
+            });
+        }
     }
 
     private static void ConfigureTraceLogging()
