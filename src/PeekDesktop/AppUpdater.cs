@@ -8,8 +8,8 @@ namespace PeekDesktop;
 
 internal sealed class AppUpdater
 {
-    private const string LatestReleaseApiUrl = "https://api.github.com/repos/shanselman/PeekDesktop/releases/latest";
-    private const string ReleasesPageUrl = "https://github.com/shanselman/PeekDesktop/releases/latest";
+    private const string LatestReleaseApiUrl = "https://api.github.com/repos/a1waysbeta/PeekDesktop-cn/releases/latest";
+    private const string ReleasesPageUrl = "https://github.com/a1waysbeta/PeekDesktop-cn/releases/latest";
 
     private readonly Win32MessageLoop? _messageLoop;
     private bool _isChecking;
@@ -30,8 +30,8 @@ internal sealed class AppUpdater
             {
                 NativeMethods.MessageBoxW(
                     IntPtr.Zero,
-                    "PeekDesktop is already checking for updates.",
-                    "PeekDesktop Update",
+                    "PeekDesktop 正在检查更新中。",
+                    "PeekDesktop 更新",
                     NativeMethods.MB_OK | NativeMethods.MB_ICONINFORMATION);
             }
 
@@ -46,7 +46,7 @@ internal sealed class AppUpdater
 
             GitHubReleaseInfo? release = await GetLatestReleaseAsync();
             if (release is null || string.IsNullOrWhiteSpace(release.TagName))
-                throw new InvalidOperationException("GitHub did not return a usable release.");
+                throw new InvalidOperationException("GitHub 未返回有效的版本信息。");
 
             string latestVersion = NormalizeVersion(release.TagName);
             string currentVersion = GetCurrentVersion();
@@ -60,8 +60,8 @@ internal sealed class AppUpdater
                 {
                     NativeMethods.MessageBoxW(
                         IntPtr.Zero,
-                        $"You're already on the latest version of PeekDesktop ({currentVersion}).",
-                        "PeekDesktop Update",
+                        $"您已经使用的是最新版本的 PeekDesktop（{currentVersion}）。",
+                        "PeekDesktop 更新",
                         NativeMethods.MB_OK | NativeMethods.MB_ICONINFORMATION);
                 }
 
@@ -76,8 +76,8 @@ internal sealed class AppUpdater
 
             int result = NativeMethods.MessageBoxW(
                 IntPtr.Zero,
-                $"PeekDesktop {latestVersion} is available.\n\nOpen the GitHub release page to download it?",
-                "Update Available",
+                $"PeekDesktop {latestVersion} 已发布。\n\n是否打开 GitHub 发布页面进行下载？",
+                "发现更新",
                 NativeMethods.MB_YESNO | NativeMethods.MB_ICONINFORMATION);
 
             if (result == NativeMethods.IDYES)
@@ -91,8 +91,8 @@ internal sealed class AppUpdater
             {
                 NativeMethods.MessageBoxW(
                     IntPtr.Zero,
-                    $"PeekDesktop couldn't check for updates.\n\n{ex.Message}",
-                    "Update Error",
+                    $"PeekDesktop 无法检查更新。\n\n{ex.Message}",
+                    "更新错误",
                     NativeMethods.MB_OK | NativeMethods.MB_ICONERROR);
             }
         }
@@ -106,7 +106,7 @@ internal sealed class AppUpdater
     {
         string url = _latestReleaseUrl ?? ReleasesPageUrl;
 
-        // Validate URL before launching — only allow https://github.com/shanselman/PeekDesktop/
+        // Validate URL before launching — only allow https://github.com/a1waysbeta/PeekDesktop-cn/
         if (!IsValidReleaseUrl(url))
         {
             AppDiagnostics.Log($"Update URL failed validation, using hardcoded fallback: {url}");
@@ -121,7 +121,7 @@ internal sealed class AppUpdater
         return Uri.TryCreate(url, UriKind.Absolute, out Uri? uri)
             && uri.Scheme == "https"
             && uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase)
-            && uri.AbsolutePath.StartsWith("/shanselman/PeekDesktop/", StringComparison.OrdinalIgnoreCase);
+            && uri.AbsolutePath.StartsWith("/a1waysbeta/PeekDesktop-cn/", StringComparison.OrdinalIgnoreCase);
     }
 
     private void RaiseUpdateAvailable(string version, string releaseUrl)
