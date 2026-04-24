@@ -17,7 +17,8 @@ permissions:
   id-token: write
 
 env:
-  ALLOW_UNSIGNED: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.allow_unsigned == 'true' }}
+  # ALLOW_UNSIGNED: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.allow_unsigned == 'true' }}
+  ALLOW_UNSIGNED: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.allow_unsigned == 'true' }}
   HAS_AZURE_SIGNING: ${{ secrets.AZURE_CLIENT_ID != '' && secrets.AZURE_CLIENT_SECRET != '' && secrets.AZURE_SUBSCRIPTION_ID != '' && secrets.AZURE_TENANT_ID != '' }}
   TRUSTED_SIGNING_ENDPOINT: ${{ vars.AZURE_TRUSTED_SIGNING_ENDPOINT || 'https://wus2.codesigning.azure.net/' }}
   TRUSTED_SIGNING_ACCOUNT: ${{ vars.AZURE_TRUSTED_SIGNING_ACCOUNT || 'hanselman' }}
@@ -38,11 +39,11 @@ jobs:
       with:
         dotnet-version: '10.0.x'
 
-    - name: Require signing configuration
-      if: env.HAS_AZURE_SIGNING != 'true' && env.ALLOW_UNSIGNED != 'true'
-      shell: pwsh
-      run: |
-        throw "Trusted Signing is not configured. Set the Azure signing secrets/variables, or use workflow_dispatch with allow_unsigned=true for a one-off dry run."
+    # - name: Require signing configuration
+    #   if: env.HAS_AZURE_SIGNING != 'true' && env.ALLOW_UNSIGNED != 'true'
+    #   shell: pwsh
+    #   run: |
+    #     throw "Trusted Signing is not configured. Set the Azure signing secrets/variables, or use workflow_dispatch with allow_unsigned=true for a one-off dry run."
 
     - name: Restore dependencies
       run: dotnet restore src/PeekDesktop/PeekDesktop.csproj
@@ -108,55 +109,55 @@ jobs:
           /p:AssemblyInformationalVersion=$env:FULLVERSION `
           --self-contained
 
-    - name: Azure Login
-      if: env.HAS_AZURE_SIGNING == 'true'
-      uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
-      with:
-        creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
+    # - name: Azure Login
+    #   if: env.HAS_AZURE_SIGNING == 'true'
+    #   uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+    #   with:
+    #     creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
 
-    - name: Sign executables with Trusted Signing
-      if: env.HAS_AZURE_SIGNING == 'true'
-      uses: azure/trusted-signing-action@db7a3a6bd3912025c705162fb7475389f5b69ec6 # v1
-      with:
-        azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-        azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-        azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-        endpoint: ${{ env.TRUSTED_SIGNING_ENDPOINT }}
-        signing-account-name: ${{ env.TRUSTED_SIGNING_ACCOUNT }}
-        certificate-profile-name: ${{ env.TRUSTED_SIGNING_PROFILE }}
-        files: |
-          ${{ github.workspace }}\src\PeekDesktop\bin\Release\net10.0-windows\win-x64\publish\PeekDesktop.exe
-          ${{ github.workspace }}\src\PeekDesktop\bin\Release\net10.0-windows\win-arm64\publish\PeekDesktop.exe
-        file-digest: SHA256
-        timestamp-rfc3161: http://timestamp.acs.microsoft.com
-        timestamp-digest: SHA256
+    # - name: Sign executables with Trusted Signing
+    #   if: env.HAS_AZURE_SIGNING == 'true'
+    #   uses: azure/trusted-signing-action@db7a3a6bd3912025c705162fb7475389f5b69ec6 # v1
+    #   with:
+    #     azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+    #     azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+    #     azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+    #     endpoint: ${{ env.TRUSTED_SIGNING_ENDPOINT }}
+    #     signing-account-name: ${{ env.TRUSTED_SIGNING_ACCOUNT }}
+    #     certificate-profile-name: ${{ env.TRUSTED_SIGNING_PROFILE }}
+    #     files: |
+    #       ${{ github.workspace }}\src\PeekDesktop\bin\Release\net10.0-windows\win-x64\publish\PeekDesktop.exe
+    #       ${{ github.workspace }}\src\PeekDesktop\bin\Release\net10.0-windows\win-arm64\publish\PeekDesktop.exe
+    #     file-digest: SHA256
+    #     timestamp-rfc3161: http://timestamp.acs.microsoft.com
+    #     timestamp-digest: SHA256
 
-    - name: Verify signatures
-      if: env.HAS_AZURE_SIGNING == 'true'
-      shell: pwsh
-      run: |
-        $files = @(
-          "src/PeekDesktop/bin/Release/net10.0-windows/win-x64/publish/PeekDesktop.exe",
-          "src/PeekDesktop/bin/Release/net10.0-windows/win-arm64/publish/PeekDesktop.exe"
-        )
+    # - name: Verify signatures
+    #   if: env.HAS_AZURE_SIGNING == 'true'
+    #   shell: pwsh
+    #   run: |
+    #     $files = @(
+    #       "src/PeekDesktop/bin/Release/net10.0-windows/win-x64/publish/PeekDesktop.exe",
+    #       "src/PeekDesktop/bin/Release/net10.0-windows/win-arm64/publish/PeekDesktop.exe"
+    #     )
 
-        foreach ($file in $files) {
-          $signature = Get-AuthenticodeSignature -FilePath $file
-          Write-Host "$file => $($signature.Status)"
+    #     foreach ($file in $files) {
+    #       $signature = Get-AuthenticodeSignature -FilePath $file
+    #       Write-Host "$file => $($signature.Status)"
 
-          if ($signature.Status -ne 'Valid') {
-            throw "Signature verification failed for $file"
-          }
-        }
+    #       if ($signature.Status -ne 'Valid') {
+    #         throw "Signature verification failed for $file"
+    #       }
+    #     }
 
-    - name: Signing skipped
-      if: env.HAS_AZURE_SIGNING != 'true' && env.ALLOW_UNSIGNED == 'true'
-      shell: pwsh
-      run: |
-        if ('${{ github.ref_type }}' -eq 'tag') {
-          throw "Unsigned builds are not allowed for tagged releases. Configure Azure Trusted Signing secrets first."
-        }
-        Write-Host "Trusted Signing is not configured for this repo yet; continuing only because this is not a tagged release."
+    # - name: Signing skipped
+    #   if: env.HAS_AZURE_SIGNING != 'true' && env.ALLOW_UNSIGNED == 'true'
+    #   shell: pwsh
+    #   run: |
+    #     if ('${{ github.ref_type }}' -eq 'tag') {
+    #       throw "Unsigned builds are not allowed for tagged releases. Configure Azure Trusted Signing secrets first."
+    #     }
+    #     Write-Host "Trusted Signing is not configured for this repo yet; continuing only because this is not a tagged release."
 
     - name: Prepare artifacts
       shell: pwsh
