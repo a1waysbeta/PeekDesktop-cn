@@ -60,7 +60,9 @@ jobs:
         if ($env:REF_TYPE -eq 'tag') {
           $version = $env:REF_NAME.TrimStart('v')
         } else {
-          $version = "0.0.0-ci.$env:RUN_NUMBER"
+          # $version = "0.0.0-ci.$env:RUN_NUMBER"
+          # 修改这里：使用你想要的版本号
+          $version = "0.9.2"
         }
 
         $numericVersion = ($version -split '-', 2)[0]
