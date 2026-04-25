@@ -97,6 +97,7 @@ jobs:
           /p:AssemblyVersion=$env:ASSEMBLY_VERSION `
           /p:FileVersion=$env:ASSEMBLY_VERSION `
           /p:AssemblyInformationalVersion=$env:FULLVERSION `
+          /p:MinVerSkip=true `
           --self-contained
 
     - name: Build ARM64
@@ -111,6 +112,7 @@ jobs:
           /p:AssemblyVersion=$env:ASSEMBLY_VERSION `
           /p:FileVersion=$env:ASSEMBLY_VERSION `
           /p:AssemblyInformationalVersion=$env:FULLVERSION `
+          /p:MinVerSkip=true `
           --self-contained
 
     - name: Azure Login
