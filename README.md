@@ -1,5 +1,11 @@
 # PeekDesktop 👀
 
+<p align="center">
+  <!-- 徽章组：版本 | 下载 -->
+  <a href="https://github.com/a1waysbeta/PeekDesktop-cn/releases"><img src="https://img.shields.io/github/v/release/a1waysbeta/PeekDesktop-cn?style=flat-square&label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC&&color=blue" alt="最新版本"></a>
+  <a href="https://github.com/a1waysbeta/PeekDesktop-cn/releases"><img src="https://img.shields.io/github/downloads/a1waysbeta/PeekDesktop-cn/total?style=flat-square&label=%E4%B8%8B%E8%BD%BD%E6%AC%A1%E6%95%B0&&color=success" alt="下载次数"></a>
+</p>
+
 **点击桌面空白壁纸（或任务栏空白区域）即可显示桌面 —— 就像 macOS Sonoma 一样。**
 
 PeekDesktop 将 macOS Sonoma 的「点击壁纸显示桌面」功能带到 Windows 10 和 11。默认情况下，它使用资源管理器的原生「显示桌面」行为，同时还包含可选的「飞离」实验性效果，以及托盘菜单中的「需要双击」和「点击任务栏触发显示桌面」开关。你可以正常点击或拖拽桌面图标，不会意外触发显示桌面。显示桌面后，再次点击任意应用窗口、任务栏空白区域或桌面壁纸，所有窗口就会恢复到原来的位置。
