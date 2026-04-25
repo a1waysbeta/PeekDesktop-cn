@@ -12,8 +12,8 @@ namespace PeekDesktop;
 
 internal sealed class AppUpdater
 {
-    private const string LatestReleaseApiUrl = "https://api.github.com/repos/shanselman/PeekDesktop/releases/latest";
-    private const string ReleasesPageUrl = "https://github.com/shanselman/PeekDesktop/releases/latest";
+    private const string LatestReleaseApiUrl = "https://api.github.com/repos/a1waysbeta/PeekDesktop-cn/releases/latest";
+    private const string ReleasesPageUrl = "https://github.com/a1waysbeta/PeekDesktop-cn/releases/latest";
 
     private readonly Win32MessageLoop? _messageLoop;
     private int _isChecking;
@@ -47,8 +47,8 @@ internal sealed class AppUpdater
             {
                 NativeMethods.MessageBoxW(
                     IntPtr.Zero,
-                    "PeekDesktop is already checking for updates.",
-                    "PeekDesktop Update",
+                    "PeekDesktop 正在检查更新中。",
+                    "PeekDesktop 更新",
                     NativeMethods.MB_OK | NativeMethods.MB_ICONINFORMATION);
             }
 
@@ -61,7 +61,7 @@ internal sealed class AppUpdater
 
             GitHubReleaseInfo? release = await GetLatestReleaseAsync();
             if (release is null || string.IsNullOrWhiteSpace(release.TagName))
-                throw new InvalidOperationException("GitHub did not return a usable release.");
+                throw new InvalidOperationException("GitHub 未返回有效的版本信息。");
 
             string latestVersion = NormalizeVersion(release.TagName);
             string currentVersion = GetCurrentVersion();
@@ -76,8 +76,8 @@ internal sealed class AppUpdater
                 {
                     NativeMethods.MessageBoxW(
                         IntPtr.Zero,
-                        $"You're already on the latest version of PeekDesktop ({currentVersion}).",
-                        "PeekDesktop Update",
+                        $"您已经使用的是最新版本的 PeekDesktop（{currentVersion}）。",
+                        "PeekDesktop 更新",
                         NativeMethods.MB_OK | NativeMethods.MB_ICONINFORMATION);
                 }
 
@@ -101,8 +101,8 @@ internal sealed class AppUpdater
             {
                 NativeMethods.MessageBoxW(
                     IntPtr.Zero,
-                    $"PeekDesktop couldn't check for updates.\n\n{ex.Message}",
-                    "Update Error",
+                    $"PeekDesktop 无法检查更新。\n\n{ex.Message}",
+                    "更新错误",
                     NativeMethods.MB_OK | NativeMethods.MB_ICONERROR);
             }
         }
@@ -121,12 +121,12 @@ internal sealed class AppUpdater
         if (Interlocked.CompareExchange(ref _isUpdating, 1, 0) != 0)
             return;
 
-        latestVersion ??= _latestRelease is not null ? NormalizeVersion(_latestRelease.TagName) : "new version";
+        latestVersion ??= _latestRelease is not null ? NormalizeVersion(_latestRelease.TagName) : "新版本";
 
         int result = NativeMethods.MessageBoxW(
             IntPtr.Zero,
-            $"PeekDesktop {latestVersion} is available.\n\nDownload and install it now? PeekDesktop will restart automatically.",
-            "Update Available",
+            $"PeekDesktop {latestVersion} 已发布。\n\n是否立即下载并安装？PeekDesktop 将自动重启。",
+            "发现更新",
             NativeMethods.MB_YESNO | NativeMethods.MB_ICONINFORMATION);
 
         if (result != NativeMethods.IDYES)
@@ -159,19 +159,19 @@ internal sealed class AppUpdater
         try
         {
             if (_latestRelease is null)
-                throw new InvalidOperationException("No release information available.");
+                throw new InvalidOperationException("没有可用的版本信息。");
 
             string? assetUrl = FindMatchingAssetUrl(_latestRelease);
             if (assetUrl is null)
                 throw new InvalidOperationException(
-                    $"No matching download found for {RuntimeInformation.ProcessArchitecture}.");
+                    $"未找到适用于 {RuntimeInformation.ProcessArchitecture} 的下载文件。");
 
             AppDiagnostics.Log($"Downloading update from: {assetUrl}");
 
             string exePath = Environment.ProcessPath
-                ?? throw new InvalidOperationException("Cannot determine current exe path.");
+                ?? throw new InvalidOperationException("无法确定当前 exe 路径。");
             string exeDir = Path.GetDirectoryName(exePath)
-                ?? throw new InvalidOperationException("Cannot determine exe directory.");
+                ?? throw new InvalidOperationException("无法确定 exe 目录。");
             string newExePath = Path.Combine(exeDir, "PeekDesktop.new.exe");
             string oldExePath = Path.Combine(exeDir, "PeekDesktop.old.exe");
             string tempZipPath = Path.Combine(
@@ -195,17 +195,17 @@ internal sealed class AppUpdater
                 if (!isValid)
                 {
                     throw new InvalidOperationException(
-                        $"The downloaded update does not have a valid code signature " +
-                        $"(signer: {signerName ?? "unknown"}). " +
-                        "The update has been cancelled for your safety.");
+                        $"下载的更新没有有效的代码签名" +
+                        $"（签名者：{signerName ?? "未知"}）。" +
+                        "为了您的安全，已取消本次更新。");
                 }
 
                 // Step 4: Preflight — verify we can write to the exe directory
                 if (!CanWriteToDirectory(exeDir))
                 {
                     throw new InvalidOperationException(
-                        "PeekDesktop cannot update itself in this folder (permission denied).\n\n" +
-                        "Move PeekDesktop to a user-writable folder, or download the update manually.");
+                        "PeekDesktop 无法在此文件夹中更新自身（权限不足）。\n\n" +
+                        "请将 PeekDesktop 移动到一个用户可写的文件夹，或手动下载更新。");
                 }
 
                 // Step 5: Rename dance — swap the exe in place
@@ -226,9 +226,9 @@ internal sealed class AppUpdater
                 {
                     NativeMethods.MessageBoxW(
                         IntPtr.Zero,
-                        "The update was installed but PeekDesktop could not restart automatically.\n\n" +
-                        "Please start PeekDesktop manually.",
-                        "Update Installed",
+                        "更新已安装，但 PeekDesktop 无法自动重启。\n\n" +
+                        "请手动启动 PeekDesktop。",
+                        "更新已完成",
                         NativeMethods.MB_OK | NativeMethods.MB_ICONINFORMATION);
                     return;
                 }
@@ -269,8 +269,8 @@ internal sealed class AppUpdater
 
             NativeMethods.MessageBoxW(
                 IntPtr.Zero,
-                $"PeekDesktop couldn't install the update.\n\n{ex.Message}",
-                "Update Error",
+                $"PeekDesktop 无法安装更新。\n\n{ex.Message}",
+                "更新错误",
                 NativeMethods.MB_OK | NativeMethods.MB_ICONERROR);
         }
         finally
@@ -297,7 +297,7 @@ internal sealed class AppUpdater
         }
 
         if (exeEntry is null)
-            throw new InvalidOperationException("The update zip does not contain PeekDesktop.exe.");
+            throw new InvalidOperationException("更新压缩包中不包含 PeekDesktop.exe 文件。");
 
         exeEntry.ExtractToFile(destinationPath, overwrite: true);
     }
@@ -396,7 +396,7 @@ internal sealed class AppUpdater
         return Uri.TryCreate(url, UriKind.Absolute, out Uri? uri)
             && uri.Scheme == "https"
             && uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase)
-            && uri.AbsolutePath.StartsWith("/shanselman/PeekDesktop/", StringComparison.OrdinalIgnoreCase);
+            && uri.AbsolutePath.StartsWith("/a1waysbeta/PeekDesktop-cn/", StringComparison.OrdinalIgnoreCase);
     }
 
     private void RaiseUpdateAvailable(string version, string releaseUrl)
