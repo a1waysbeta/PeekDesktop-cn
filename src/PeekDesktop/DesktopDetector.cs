@@ -32,6 +32,16 @@ public static class DesktopDetector
             return DesktopClickTarget.DesktopBackground;
         }
 
+        if (PeekOnTaskbarClick && IsMonitorTaskbarAreaPoint(point))
+        {
+            AppDiagnostics.Log($"Taskbar-area click detected without taskbar hwnd at {NativeMethods.DescribePoint(point)}; deferring to UIA");
+            if (ClassifyTaskbarOverlayPoint(point))
+            {
+                AppDiagnostics.Log("Taskbar blank-area click detected");
+                return DesktopClickTarget.DesktopBackground;
+            }
+        }
+
         if (!IsDesktopRelatedWindow(hwnd))
         {
             AppDiagnostics.Log($"Desktop relationship check failed at {NativeMethods.DescribePoint(point)}");
@@ -220,18 +230,40 @@ public static class DesktopDetector
                 return false;
             }
 
-            // On some negative-coordinate taskbars, UIA can report the frame container
-            // instead of the actual button under the cursor. Prefer false negatives
-            // (no peek) over false positives (peek on app button clicks).
-            if (screenPoint.x < 0)
-            {
-                AppDiagnostics.Log(
-                    $"Taskbar UIA frame-only result on negative X at {NativeMethods.DescribePoint(screenPoint)}; treating as non-blank");
-                return false;
-            }
+            AppDiagnostics.Log(
+                $"Taskbar UIA frame-only result at {NativeMethods.DescribePoint(screenPoint)} with no nearby interactive element");
         }
 
         return !isInteractive;
+    }
+
+    private static bool IsMonitorTaskbarAreaPoint(NativeMethods.POINT screenPoint)
+    {
+        IntPtr monitor = NativeMethods.MonitorFromPoint(screenPoint, NativeMethods.MONITOR_DEFAULTTONEAREST);
+        if (monitor == IntPtr.Zero)
+            return false;
+
+        var info = new NativeMethods.MONITORINFO
+        {
+            cbSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.MONITORINFO>()
+        };
+
+        if (!NativeMethods.GetMonitorInfoW(monitor, ref info))
+            return false;
+
+        bool inMonitor =
+            screenPoint.x >= info.rcMonitor.Left
+            && screenPoint.x < info.rcMonitor.Right
+            && screenPoint.y >= info.rcMonitor.Top
+            && screenPoint.y < info.rcMonitor.Bottom;
+
+        bool inWorkArea =
+            screenPoint.x >= info.rcWork.Left
+            && screenPoint.x < info.rcWork.Right
+            && screenPoint.y >= info.rcWork.Top
+            && screenPoint.y < info.rcWork.Bottom;
+
+        return inMonitor && !inWorkArea;
     }
 
     private static bool IsTaskbarFrameClassification(string description)
