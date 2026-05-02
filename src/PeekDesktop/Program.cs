@@ -97,6 +97,7 @@ public static class Program
         var settings = Settings.Load();
         Settings.SetAutoStart(settings.StartWithWindows);
         _desktopPeek = new DesktopPeek(settings);
+        _desktopPeek.SetRestoreHiddenWindowsOnAppOpen(settings.RestoreHiddenWindowsOnAppOpen);
         _appUpdater = new AppUpdater(messageLoop);
 
         // Let the updater release the mutex before relaunching

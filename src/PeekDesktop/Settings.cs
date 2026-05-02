@@ -34,14 +34,19 @@ public sealed class Settings
             if (File.Exists(SettingsPath))
             {
                 byte[] jsonBytes = File.ReadAllBytes(SettingsPath);
+                bool shouldSave = !JsonContainsProperty(jsonBytes, "RestoreHiddenWindowsOnAppOpen"u8)
+                    || !JsonContainsProperty(jsonBytes, "AutoCheckForUpdates"u8);
                 Settings settings = DeserializeUtf8(jsonBytes);
                 PeekMode normalizedMode = NormalizePeekMode(settings.PeekMode);
                 if (settings.PeekMode != normalizedMode)
                 {
                     AppDiagnostics.Log($"Unsupported peek mode '{settings.PeekMode}' migrated to {normalizedMode}.");
                     settings.PeekMode = normalizedMode;
-                    settings.Save();
+                    shouldSave = true;
                 }
+
+                if (shouldSave)
+                    settings.Save();
 
                 return settings;
             }
@@ -140,6 +145,30 @@ public sealed class Settings
         }
 
         return settings;
+    }
+
+    private static bool JsonContainsProperty(ReadOnlySpan<byte> utf8Json, ReadOnlySpan<byte> propertyName)
+    {
+        var reader = new Utf8JsonReader(utf8Json);
+
+        if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
+            return false;
+
+        while (reader.Read())
+        {
+            if (reader.TokenType == JsonTokenType.EndObject)
+                return false;
+
+            if (reader.TokenType != JsonTokenType.PropertyName)
+                continue;
+
+            if (reader.ValueTextEquals(propertyName))
+                return true;
+
+            reader.Skip();
+        }
+
+        return false;
     }
 
     private byte[] SerializeUtf8()
