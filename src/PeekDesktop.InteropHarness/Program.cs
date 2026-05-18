@@ -371,8 +371,8 @@ internal static class Program
         // Version parsing is exercised through the public API.
 
         // Verify known version ordering by creating GitHubReleaseInfo objects
-        var oldRelease = new GitHubReleaseInfo { TagName = "v0.1.0", HtmlUrl = "https://github.com/shanselman/PeekDesktop/releases/tag/v0.1.0" };
-        var futureRelease = new GitHubReleaseInfo { TagName = "v99.0.0", HtmlUrl = "https://github.com/shanselman/PeekDesktop/releases/tag/v99.0.0" };
+        var oldRelease = new GitHubReleaseInfo { TagName = "v0.1.0", HtmlUrl = "https://github.com/a1waysbeta/PeekDesktop-cn/releases/tag/v0.1.0" };
+        var futureRelease = new GitHubReleaseInfo { TagName = "v99.0.0", HtmlUrl = "https://github.com/a1waysbeta/PeekDesktop-cn/releases/tag/v99.0.0" };
 
         // Verify tag normalization (strip 'v' prefix)
         if (oldRelease.TagName[0] != 'v')
@@ -388,11 +388,11 @@ internal static class Program
         var release = new GitHubReleaseInfo
         {
             TagName = "v1.0.0",
-            HtmlUrl = "https://github.com/shanselman/PeekDesktop/releases/tag/v1.0.0",
+            HtmlUrl = "https://github.com/a1waysbeta/PeekDesktop-cn/releases/tag/v1.0.0",
             Assets = new List<GitHubAssetInfo>
             {
-                new() { Name = "PeekDesktop-v1.0.0-win-x64.zip", BrowserDownloadUrl = "https://github.com/shanselman/PeekDesktop/releases/download/v1.0.0/PeekDesktop-v1.0.0-win-x64.zip" },
-                new() { Name = "PeekDesktop-v1.0.0-win-arm64.zip", BrowserDownloadUrl = "https://github.com/shanselman/PeekDesktop/releases/download/v1.0.0/PeekDesktop-v1.0.0-win-arm64.zip" },
+                new() { Name = "PeekDesktop-v1.0.0-win-x64.zip", BrowserDownloadUrl = "https://github.com/a1waysbeta/PeekDesktop-cn/releases/download/v1.0.0/PeekDesktop-v1.0.0-win-x64.zip" },
+                new() { Name = "PeekDesktop-v1.0.0-win-arm64.zip", BrowserDownloadUrl = "https://github.com/a1waysbeta/PeekDesktop-cn/releases/download/v1.0.0/PeekDesktop-v1.0.0-win-arm64.zip" },
             }
         };
 
@@ -438,16 +438,16 @@ internal static class Program
         string json = """
         {
             "tag_name": "v0.8.5",
-            "html_url": "https://github.com/shanselman/PeekDesktop/releases/tag/v0.8.5",
+            "html_url": "https://github.com/a1waysbeta/PeekDesktop-cn/releases/tag/v0.8.5",
             "assets": [
                 {
                     "name": "PeekDesktop-v0.8.5-win-x64.zip",
-                    "browser_download_url": "https://github.com/shanselman/PeekDesktop/releases/download/v0.8.5/PeekDesktop-v0.8.5-win-x64.zip",
+                    "browser_download_url": "https://github.com/a1waysbeta/PeekDesktop-cn/releases/download/v0.8.5/PeekDesktop-v0.8.5-win-x64.zip",
                     "size": 1900000
                 },
                 {
                     "name": "PeekDesktop-v0.8.5-win-arm64.zip",
-                    "browser_download_url": "https://github.com/shanselman/PeekDesktop/releases/download/v0.8.5/PeekDesktop-v0.8.5-win-arm64.zip",
+                    "browser_download_url": "https://github.com/a1waysbeta/PeekDesktop-cn/releases/download/v0.8.5/PeekDesktop-v0.8.5-win-arm64.zip",
                     "size": 1800000
                 }
             ],
@@ -557,7 +557,7 @@ internal static class Program
             // Test DownloadToFile with a URL that serves raw content
             // Use raw.githubusercontent.com which happily serves any Accept header
             WinHttp.DownloadToFile(
-                "https://raw.githubusercontent.com/shanselman/PeekDesktop/main/LICENSE",
+                "https://raw.githubusercontent.com/a1waysbeta/PeekDesktop-cn/main/LICENSE",
                 "PeekDesktop-Test", tempFile, timeoutSeconds: 15);
 
             if (!File.Exists(tempFile))
